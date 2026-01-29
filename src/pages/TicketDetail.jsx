@@ -18,128 +18,83 @@ export const TicketDetail = () => {
   const { tickets, updateTicket, addComment, assignTicket } = useTickets()
   const [commentText, setCommentText] = useState('')
   const [estimatedTime, setEstimatedTime] = useState('')
-  const [updateKey, setUpdateKey] = useState(0) // Force re-render key
+  const [updateKey, setUpdateKey] = useState(0)
   const commentsEndRef = useRef(null)
 
-  // Use useMemo to ensure ticket reference updates when comments change
   const ticket = useMemo(() => {
     const found = tickets.find((t) => t.id === id)
-    if (found) {
-      console.log('🎫 Ticket found, comments:', found.comments?.length)
-    }
     return found
   }, [tickets, id, updateKey])
   
-  // Force re-render when ticket comments change
   useEffect(() => {
     if (ticket?.comments) {
-      console.log('🔄 Ticket comments changed, count:', ticket.comments.length)
       setUpdateKey(prev => prev + 1)
     }
   }, [ticket?.comments?.length, ticket?.updatedAt])
 
-  // Auto-scroll to bottom when new comment is added
   useEffect(() => {
     if (commentsEndRef.current && ticket?.comments?.length > 0) {
-      console.log('📜 Auto-scrolling to bottom, comments:', ticket.comments.length)
-      // Small delay to ensure DOM is updated
       setTimeout(() => {
         commentsEndRef.current?.scrollIntoView({ behavior: 'smooth' })
       }, 100)
     }
   }, [ticket?.comments?.length, updateKey])
 
-  // Auto-scroll to bottom when new comment is added
   useEffect(() => {
     if (commentsEndRef.current) {
       commentsEndRef.current.scrollIntoView({ behavior: 'smooth' })
     }
   }, [ticket?.comments?.length, updateKey])
   
-  // Обновляем estimatedTime когда тикет загружается
   useEffect(() => {
     if (ticket) {
       setEstimatedTime(ticket.estimatedTime || '')
     }
   }, [ticket])
 
-  // Subscribe to WebSocket updates for this ticket
   useEffect(() => {
     if (!id) return
 
     let subscribeTimeout = null
 
-    // Function to subscribe when WebSocket is ready
     const subscribeWhenReady = () => {
       if (wsService.isConnected()) {
-        console.log(`📌 Subscribing to ticket ${id}`)
         wsService.subscribeToTicket(id)
       } else {
-        // Wait a bit and try again (max 5 seconds)
         subscribeTimeout = setTimeout(() => {
           if (wsService.isConnected()) {
             wsService.subscribeToTicket(id)
-          } else {
-            console.warn(`⚠️ WebSocket not connected, cannot subscribe to ticket ${id}`)
           }
         }, 1000)
       }
     }
 
-    // Try to subscribe immediately
     subscribeWhenReady()
 
-    // Listen for WebSocket connection to subscribe
     const unsubscribeConnected = wsService.on('connected', () => {
-      console.log('✅ WebSocket connected, subscribing to ticket')
       wsService.subscribeToTicket(id)
     })
 
-    // Listen for ticket updates
     const unsubscribeUpdated = wsService.on('ticket_updated', (data) => {
       if (data.ticket?.id === id) {
-        console.log('📨 Ticket updated via WebSocket:', data.ticket.id)
-        // Ticket will be updated via TicketsContext
       }
     })
 
     const unsubscribeCommentAdded = wsService.on('comment_added', (data) => {
-      console.log('📨 Comment added event received in TicketDetail:', data)
-      console.log('📨 Current ticket ID:', id)
-      console.log('📨 Event ticket_id:', data.ticket_id)
-      console.log('📨 Event ticket?.id:', data.ticket?.id)
-      
       if (data.ticket_id === id || data.ticket?.id === id) {
-        console.log('✅ Comment added to current ticket!')
-        console.log('📨 New ticket data:', data.ticket)
-        console.log('📨 Comments in new ticket:', data.ticket?.comments?.length)
-        
-        // Force component re-render - TicketsContext should already update the ticket
-        // But we force a re-render to ensure UI updates
         setUpdateKey(prev => prev + 1)
-        
-        // Also try to reload ticket if needed (fallback)
-        if (data.ticket) {
-          console.log('📨 Ticket data received, should update via TicketsContext')
-        }
-      } else {
-        console.log('⚠️ Comment added to different ticket, ignoring')
       }
     })
 
-    // Listen for subscription confirmation
     const unsubscribeSubscribed = wsService.on('subscribed', (data) => {
       if (data.ticket_id === id) {
-        console.log(`✅ Successfully subscribed to ticket ${id}`)
       }
     })
 
-    // Cleanup on unmount
     return () => {
       if (subscribeTimeout) {
         clearTimeout(subscribeTimeout)
       }
-      console.log(`📌 Unsubscribing from ticket ${id}`)
       if (wsService.isConnected()) {
         wsService.unsubscribeFromTicket(id)
       }
@@ -161,7 +116,6 @@ export const TicketDetail = () => {
     )
   }
 
-  // Обычные пользователи могут видеть только свои тикеты
   if (!isAdmin && !isIT && ticket.createdBy !== user.id) {
     return (
       <div className="text-center py-12">
@@ -183,8 +137,6 @@ export const TicketDetail = () => {
     try {
       await updateTicket(id, { status: newStatus })
     } catch (error) {
-      console.error('Failed to update ticket status:', error)
-      // Можно добавить toast уведомление об ошибке
     }
   }
 
@@ -194,8 +146,6 @@ export const TicketDetail = () => {
         await assignTicket(id, user.id)
         await handleStatusChange('in_progress')
       } catch (error) {
-        console.error('Failed to assign ticket:', error)
-        // Можно добавить toast уведомление об ошибке
       }
     }
   }
@@ -207,8 +157,6 @@ export const TicketDetail = () => {
         await addComment(id, commentText)
         setCommentText('')
       } catch (error) {
-        console.error('Failed to add comment:', error)
-        // Можно добавить toast уведомление об ошибке
       }
     }
   }
@@ -216,11 +164,11 @@ export const TicketDetail = () => {
   const getStatusText = (status) => {
     switch (status) {
       case 'open':
-        return 'Открытый'
+        return 'Открыт'
       case 'in_progress':
-        return 'Взять на разработку'
+        return 'В работе'
       case 'closed':
-        return 'Закрыть тикет'
+        return 'Закрыт'
       default:
         return status
     }
@@ -229,11 +177,8 @@ export const TicketDetail = () => {
   const handleEstimatedTimeChange = async (value) => {
     setEstimatedTime(value)
     try {
-      // Примечание: estimatedTime может не поддерживаться backend, это локальное поле
       await updateTicket(id, { estimatedTime: value })
     } catch (error) {
-      console.error('Failed to update estimated time:', error)
-      // Игнорируем ошибку, так как это может быть локальное поле
     }
   }
 
@@ -387,9 +332,9 @@ export const TicketDetail = () => {
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="open">Открытый</SelectItem>
-                      <SelectItem value="in_progress">Взять на разработку</SelectItem>
-                      <SelectItem value="closed">Закрыть тикет</SelectItem>
+                      <SelectItem value="open">Открыт</SelectItem>
+                      <SelectItem value="in_progress">В работе</SelectItem>
+                      <SelectItem value="closed">Закрыт</SelectItem>
                     </SelectContent>
                   </Select>
                 ) : (

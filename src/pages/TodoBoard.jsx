@@ -1,7 +1,8 @@
-import { useState, useEffect, useMemo, useCallback } from 'react'
+import { useState, useEffect, useMemo, useCallback, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import { useTodos } from '../context/TodoContext'
+import { useTheme } from '../context/ThemeContext'
 import { wsService } from '../services/websocket'
 import { Card, CardContent } from '../components/ui/card'
 import { Button } from '../components/ui/button'
@@ -19,6 +20,7 @@ import {
   Dialog,
   DialogContent,
   DialogDescription,
+  DialogFooter,
   DialogHeader,
   DialogTitle,
   DialogTrigger,
@@ -31,7 +33,6 @@ import {
   DropdownMenuLabel,
   DropdownMenuSeparator,
 } from '../components/ui/dropdown-menu'
-import { ToastContainer } from '../components/ui/toast'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../components/ui/tabs'
 import {
   Plus,
@@ -68,13 +69,16 @@ import {
   XCircle,
   Info,
   ArrowLeft,
+  Archive,
 } from 'lucide-react'
 import { format, parseISO } from 'date-fns'
 import { cn } from '../lib/utils'
+import { api } from '../config/api'
 
 export const TodoBoard = () => {
   const navigate = useNavigate()
   const { user, isAdmin, isIT, getAllUsers } = useAuth()
+  const { theme, setTheme, toggleTheme } = useTheme()
   const {
     todos,
     addTodo,
@@ -86,13 +90,14 @@ export const TodoBoard = () => {
     addTodoListItem,
     updateTodoListItem,
     deleteTodoListItem,
+    archiveTodo,
   } = useTodos()
   const [searchQuery, setSearchQuery] = useState('')
   const [draggedTodo, setDraggedTodo] = useState(null)
   const [createCardDialogOpen, setCreateCardDialogOpen] = useState(false)
   const [createColumnDialogOpen, setCreateColumnDialogOpen] = useState(false)
+  const [isSavingColumns, setIsSavingColumns] = useState(false)
   const [selectedColumnId, setSelectedColumnId] = useState(null)
-  const [toasts, setToasts] = useState([])
   const [newCardTitle, setNewCardTitle] = useState('')
   const [newColumnTitle, setNewColumnTitle] = useState('')
   const [editingColumnId, setEditingColumnId] = useState(null)
@@ -126,28 +131,36 @@ export const TodoBoard = () => {
   const [priorityDialogOpen, setPriorityDialogOpen] = useState(false)
   const [settingsDialogOpen, setSettingsDialogOpen] = useState(false)
   const [notificationsPanelOpen, setNotificationsPanelOpen] = useState(false)
+  const [deleteColumnDialogOpen, setDeleteColumnDialogOpen] = useState(false)
+  const [columnToDelete, setColumnToDelete] = useState(null)
+  const [deleteTodoDialogOpen, setDeleteTodoDialogOpen] = useState(false)
+  const [todoToDelete, setTodoToDelete] = useState(null)
+  const [contextMenu, setContextMenu] = useState(null)
+  const [isDragging, setIsDragging] = useState(false)
+  const [startX, setStartX] = useState(0)
+  const [scrollLeft, setScrollLeft] = useState(0)
+  const scrollContainerRef = useRef(null)
+  const dragStateRef = useRef({ startX: 0, scrollLeft: 0 })
+  const isDraggingRef = useRef(false)
   const [notifications, setNotifications] = useState(() => {
     const stored = localStorage.getItem('todoBoardNotifications')
     return stored ? JSON.parse(stored) : []
   })
-  const [theme, setTheme] = useState(() => {
-    // Загружаем тему из localStorage или используем системную
-    const saved = localStorage.getItem('todoBoardTheme')
-    if (saved) return saved
-    return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'
-  })
+  const [isMounted, setIsMounted] = useState(false)
   
-  // Колонки доски с настройками цветов
   const [columns, setColumns] = useState([
-    { id: 'todo', title: 'Нужно сделать', status: 'todo', color: 'primary', backgroundImage: null },
-    { id: 'in_progress', title: 'В процессе', status: 'in_progress', color: 'secondary', backgroundImage: null },
-    { id: 'done', title: 'Готово', status: 'done', color: 'accent', backgroundImage: null },
+    { id: 'todo', title: 'К выполнению', status: 'todo', color: 'primary', backgroundImage: null, orderIndex: '0' },
+    { id: 'in_progress', title: 'В работе', status: 'in_progress', color: 'warning', backgroundImage: null, orderIndex: '1' },
+    { id: 'done', title: 'Выполнено', status: 'done', color: 'success', backgroundImage: null, orderIndex: '2' },
   ])
 
-  // Цветовая палитра проекта
   const colorPalette = {
     primary: { bg: 'bg-primary/10', border: 'border-primary/30', text: 'text-primary-foreground', header: 'bg-blue-500 text-white' },
-    secondary: { bg: 'bg-secondary/10', border: 'border-secondary/30', text: 'text-secondary-foreground', header: 'bg-green-500 text-white' },
+    warning: { bg: 'bg-yellow-500/10', border: 'border-yellow-500/30', text: 'text-yellow-700 dark:text-yellow-300', header: 'bg-yellow-500 text-white' },
+    success: { bg: 'bg-green-500/10', border: 'border-green-500/30', text: 'text-green-700 dark:text-green-300', header: 'bg-green-500 text-white' },
+    danger: { bg: 'bg-red-500/10', border: 'border-red-500/30', text: 'text-red-700 dark:text-red-300', header: 'bg-red-500 text-white' },
+    info: { bg: 'bg-cyan-500/10', border: 'border-cyan-500/30', text: 'text-cyan-700 dark:text-cyan-300', header: 'bg-cyan-500 text-white' },
+    secondary: { bg: 'bg-secondary/10', border: 'border-secondary/30', text: 'text-secondary-foreground', header: 'bg-gray-500 text-white' },
     accent: { bg: 'bg-accent/10', border: 'border-accent/30', text: 'text-accent-foreground', header: 'bg-purple-500 text-white' },
     muted: { bg: 'bg-muted/10', border: 'border-muted/30', text: 'text-muted-foreground', header: 'bg-gray-400 text-white' },
   }
@@ -155,58 +168,120 @@ export const TodoBoard = () => {
   const allUsers = getAllUsers()
 
   useEffect(() => {
-    // Load columns from API first, then fallback to localStorage
-    const loadColumns = async () => {
-      try {
-        console.log('📥 Loading columns from API...')
-        const apiColumns = await api.getTodoColumns()
-        if (apiColumns && apiColumns.length > 0) {
-          console.log(`✅ Loaded ${apiColumns.length} columns from API`)
-          const columnsWithColor = apiColumns.map((col) => ({
-            id: col.column_id,
-            title: col.title,
-            status: col.status,
-            color: col.color || 'primary',
-            backgroundImage: col.background_image || null,
-          }))
-          setColumns(columnsWithColor)
-          localStorage.setItem('todoBoardColumns', JSON.stringify(columnsWithColor))
-          return
-        }
-      } catch (error) {
-        console.error('❌ Failed to load columns from API:', error)
-      }
-      
-      // Fallback to localStorage
+    setIsMounted(true)
+    
+    if (!user) {
       const savedColumns = localStorage.getItem('todoBoardColumns')
       if (savedColumns) {
         try {
           const parsed = JSON.parse(savedColumns)
-          const columnsWithColor = parsed.map((col) => ({
+          const columnsWithColor = parsed.map((col, index) => ({
             ...col,
             color: col.color || 'primary',
             backgroundImage: col.backgroundImage || null,
+            orderIndex: col.orderIndex || index.toString(),
           }))
           setColumns(columnsWithColor)
-          console.log('📥 Loaded columns from localStorage')
         } catch (error) {
-          console.error('Ошибка загрузки колонок из localStorage:', error)
+        }
+      }
+      return
+    }
+
+    const loadColumns = async () => {
+      try {
+        const apiColumns = await api.getTodoColumns()
+        
+        if (apiColumns && Array.isArray(apiColumns)) {
+          if (apiColumns.length > 0) {
+            const sortedColumns = [...apiColumns].sort((a, b) => {
+              const orderA = parseInt(a.order_index || '0', 10)
+              const orderB = parseInt(b.order_index || '0', 10)
+              return orderA - orderB
+            })
+            
+            const columnsWithColor = sortedColumns.map((col) => ({
+              id: col.column_id,
+              title: col.title,
+              status: col.status,
+              color: col.color || 'primary',
+              backgroundImage: col.background_image || null,
+              orderIndex: col.order_index || '0',
+            }))
+            
+            setColumns(columnsWithColor)
+            localStorage.setItem('todoBoardColumns', JSON.stringify(columnsWithColor))
+            return
+          } else {
+            const savedColumns = localStorage.getItem('todoBoardColumns')
+            if (savedColumns) {
+              try {
+                const parsed = JSON.parse(savedColumns)
+                const columnsWithColor = parsed.map((col, index) => ({
+                  ...col,
+                  color: col.color || 'primary',
+                  backgroundImage: col.backgroundImage || null,
+                  orderIndex: col.orderIndex || index.toString(),
+                }))
+                setColumns(columnsWithColor)
+                return
+              } catch (error) {
+              }
+            }
+          }
+        }
+      } catch (error) {
+        let errorMessage = 'Не удалось загрузить колонки из API'
+        
+        if (error?.status === 401 || error?.message === 'Unauthorized') {
+          errorMessage = 'Требуется авторизация. Пожалуйста, войдите в систему.'
+        } else if (error?.status === 404) {
+          errorMessage = 'Эндпоинт колонок не найден. Проверьте настройки API.'
+        } else if (error?.status === 500) {
+          errorMessage = 'Ошибка сервера. Попробуйте позже.'
+        } else if (error?.message) {
+          errorMessage = error.message
+        } else if (error?.detail) {
+          errorMessage = error.detail
+        } else if (error instanceof TypeError && error.message.includes('fetch')) {
+          errorMessage = 'Ошибка сети. Проверьте подключение к серверу.'
+        }
+        
+        
+        const savedColumns = localStorage.getItem('todoBoardColumns')
+        if (savedColumns) {
+          try {
+            const parsed = JSON.parse(savedColumns)
+            const columnsWithColor = parsed.map((col, index) => ({
+              ...col,
+              color: col.color || 'primary',
+              backgroundImage: col.backgroundImage || null,
+              orderIndex: col.orderIndex || index.toString(),
+            }))
+            setColumns(columnsWithColor)
+          } catch (parseError) {
+          }
         }
       }
     }
 
     loadColumns()
 
-    // Subscribe to columns_updated WebSocket event
     const unsubscribeColumnsUpdated = wsService.on('columns_updated', (data) => {
-      console.log('📋 WebSocket: columns_updated event received', data)
       if (data.columns && Array.isArray(data.columns)) {
-        const columnsWithColor = data.columns.map((col) => ({
+        const sortedColumns = [...data.columns].sort((a, b) => {
+          const orderA = parseInt(a.order_index || a.orderIndex || '0', 10)
+          const orderB = parseInt(b.order_index || b.orderIndex || '0', 10)
+          return orderA - orderB
+        })
+        
+        const columnsWithColor = sortedColumns.map((col) => ({
           id: col.id || col.column_id,
           title: col.title,
           status: col.status,
           color: col.color || 'primary',
           backgroundImage: col.backgroundImage || col.background_image || null,
+          orderIndex: col.order_index || col.orderIndex || '0',
         }))
         setColumns(columnsWithColor)
         localStorage.setItem('todoBoardColumns', JSON.stringify(columnsWithColor))
@@ -216,46 +291,73 @@ export const TodoBoard = () => {
     return () => {
       unsubscribeColumnsUpdated()
     }
-  }, [])
+  }, [user])
+
 
   useEffect(() => {
-    // Skip saving on initial load
     if (columns.length === 0) return
+    if (isSavingColumns) return
     
-    // Save to localStorage immediately for fast access
     localStorage.setItem('todoBoardColumns', JSON.stringify(columns))
     
-    // Save to API (backend will broadcast via WebSocket)
     const saveColumnsToAPI = async () => {
       try {
+        setIsSavingColumns(true)
         const columnsData = columns.map((col, index) => ({
           column_id: col.id,
           title: col.title,
           status: col.status,
           color: col.color || 'primary',
           background_image: col.backgroundImage || null,
-          order_index: index.toString(),
+          order_index: col.orderIndex || index.toString(),
         }))
         
-        await api.updateTodoColumns(columnsData)
-        console.log('✅ Columns saved to API')
+        console.log('[TodoBoard] Автосохранение колонок в API:', columnsData)
+        const response = await api.updateTodoColumns(columnsData)
+        console.log('[TodoBoard] Ответ API при автосохранении колонок:', response)
+        
+        if (response && response.length > 0) {
+          const sortedColumns = [...response].sort((a, b) => {
+            const orderA = parseInt(a.order_index || '0', 10)
+            const orderB = parseInt(b.order_index || '0', 10)
+            return orderA - orderB
+          })
+          
+          const updatedColumns = sortedColumns.map((col) => ({
+            id: col.column_id,
+            title: col.title,
+            status: col.status,
+            color: col.color || 'primary',
+            backgroundImage: col.background_image || null,
+            orderIndex: col.order_index || '0',
+          }))
+          
+          console.log('[TodoBoard] Обновленные колонки после автосохранения:', updatedColumns)
+          setColumns(updatedColumns)
+          localStorage.setItem('todoBoardColumns', JSON.stringify(updatedColumns))
+        }
       } catch (error) {
-        console.error('❌ Failed to save columns to API:', error)
+        console.error('[TodoBoard] Ошибка автосохранения колонок:', error)
+        console.error('[TodoBoard] Детали ошибки автосохранения:', {
+          message: error?.message,
+          status: error?.status,
+          detail: error?.detail,
+          stack: error?.stack
+        })
+      } finally {
+        setIsSavingColumns(false)
       }
     }
     
-    // Debounce API save to avoid too many requests
     const timeoutId = setTimeout(saveColumnsToAPI, 500)
     
     return () => clearTimeout(timeoutId)
-  }, [columns])
+  }, [columns, isSavingColumns])
 
   useEffect(() => {
-    // Сохраняем уведомления в localStorage
     localStorage.setItem('todoBoardNotifications', JSON.stringify(notifications))
   }, [notifications])
 
-  // Очистка старых уведомлений при загрузке компонента
   useEffect(() => {
     const thirtyDaysAgo = new Date()
     thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30)
@@ -271,38 +373,13 @@ export const TodoBoard = () => {
       }
       return prev
     })
-  }, []) // Запускаем только при монтировании компонента
+  }, [])
 
   useEffect(() => {
-    // Сохраняем состояние уведомлений в localStorage
     localStorage.setItem('todoBoardNotificationsEnabled', notificationsEnabled.toString())
   }, [notificationsEnabled])
 
   useEffect(() => {
-    // Применяем тему к document.documentElement сразу при загрузке
-    const root = document.documentElement
-    if (theme === 'dark') {
-      root.classList.add('dark')
-    } else {
-      root.classList.remove('dark')
-    }
-    localStorage.setItem('todoBoardTheme', theme)
-  }, [theme])
-
-  // Применяем тему сразу при монтировании компонента
-  useEffect(() => {
-    const root = document.documentElement
-    const savedTheme = localStorage.getItem('todoBoardTheme')
-    const initialTheme = savedTheme || (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light')
-    if (initialTheme === 'dark') {
-      root.classList.add('dark')
-    } else {
-      root.classList.remove('dark')
-    }
-  }, [])
-
-  useEffect(() => {
-    // Обновляем выбранную задачу при изменении todos
     if (selectedTodo) {
       const updated = todos.find((t) => t.id === selectedTodo.id)
       if (updated) {
@@ -314,7 +391,6 @@ export const TodoBoard = () => {
     }
   }, [todos, selectedTodo?.id])
 
-  // Calculate checklist progress
   const getChecklistProgress = (todo) => {
     if (!todo || !todo.todoLists || todo.todoLists.length === 0) {
       return 0
@@ -354,7 +430,6 @@ export const TodoBoard = () => {
 
   const handleSaveTodo = async () => {
     if (!selectedTodo || !editTitle.trim()) {
-      showToast('Ошибка', 'Введите название задачи', 'destructive')
       return
     }
 
@@ -364,29 +439,35 @@ export const TodoBoard = () => {
         description: editDescription,
         dueDate: editDueDate || null,
       })
-      showToast('Успешно', 'Задача обновлена', 'default')
     } catch (error) {
-      console.error('Failed to update todo:', error)
-      showToast('Ошибка', 'Не удалось обновить задачу', 'destructive')
+      console.error('[TodoBoard] Ошибка обновления задачи:', error)
+      let errorMessage = 'Не удалось обновить задачу'
+      
+      if (error?.status === 403 || error?.message?.includes('не можете редактировать')) {
+        errorMessage = 'Вы не можете редактировать эту задачу'
+      } else if (error?.message) {
+        errorMessage = error.message
+      } else if (error?.detail) {
+        errorMessage = error.detail
+      }
+      
     }
   }
 
   const handleAddTag = () => {
     if (!selectedTodo || !newTagName.trim()) {
-      showToast('Ошибка', 'Введите название метки', 'destructive')
       return
     }
 
     const tagName = newTagName.trim()
     if (selectedTodo.tags && selectedTodo.tags.includes(tagName)) {
-      showToast('Ошибка', 'Эта метка уже добавлена', 'destructive')
       return
     }
 
     const newTags = [...(selectedTodo.tags || []), tagName]
     updateTodo(selectedTodo.id, { tags: newTags })
     
-    sendNotificationWithSound(
+    sendNotification(
       'Метка добавлена',
       `Метка "${tagName}" добавлена к карточке "${selectedTodo.title}"`,
       'success',
@@ -395,7 +476,6 @@ export const TodoBoard = () => {
     
     setNewTagName('')
     setTagsDialogOpen(false)
-    showToast('Успешно', 'Метка добавлена', 'default')
   }
 
   const handleRemoveTag = (tagToRemove) => {
@@ -403,7 +483,6 @@ export const TodoBoard = () => {
 
     const newTags = (selectedTodo.tags || []).filter((tag) => tag !== tagToRemove)
     updateTodo(selectedTodo.id, { tags: newTags })
-    showToast('Успешно', 'Метка удалена', 'default')
   }
 
   const handleSaveDate = () => {
@@ -414,14 +493,14 @@ export const TodoBoard = () => {
     })
     
     if (editDueDate) {
-      sendNotificationWithSound(
+      sendNotification(
         'Дата установлена',
         `Срок выполнения для "${selectedTodo.title}" установлен: ${format(new Date(editDueDate), 'dd MMMM yyyy')}`,
         'info',
         selectedTodo.id
       )
     } else {
-      sendNotificationWithSound(
+      sendNotification(
         'Дата удалена',
         `Срок выполнения для "${selectedTodo.title}" удален`,
         'info',
@@ -430,7 +509,6 @@ export const TodoBoard = () => {
     }
     
     setDatesDialogOpen(false)
-    showToast('Успешно', 'Дата обновлена', 'default')
   }
 
   const handleOpenDatesDialog = () => {
@@ -446,7 +524,6 @@ export const TodoBoard = () => {
     if (!selectedTodo) return
 
     if (selectedTodo.assignedTo && selectedTodo.assignedTo.includes(userId)) {
-      showToast('Ошибка', 'Участник уже добавлен', 'destructive')
       return
     }
 
@@ -454,14 +531,13 @@ export const TodoBoard = () => {
     const newParticipants = [...(selectedTodo.assignedTo || []), userId]
     updateTodo(selectedTodo.id, { assignedTo: newParticipants })
     
-    sendNotificationWithSound(
+    sendNotification(
       'Участник добавлен',
       `"${assignedUser?.username || 'Пользователь'}" добавлен к карточке "${selectedTodo.title}"`,
       'success',
       selectedTodo.id
     )
     
-    showToast('Успешно', 'Участник добавлен', 'default')
   }
 
   const handleRemoveParticipant = (userId) => {
@@ -471,14 +547,13 @@ export const TodoBoard = () => {
     const newParticipants = (selectedTodo.assignedTo || []).filter((id) => id !== userId)
     updateTodo(selectedTodo.id, { assignedTo: newParticipants })
     
-    sendNotificationWithSound(
+    sendNotification(
       'Участник удален',
       `"${removedUser?.username || 'Пользователь'}" удален из карточки "${selectedTodo.title}"`,
       'info',
       selectedTodo.id
     )
     
-    showToast('Успешно', 'Участник удален', 'default')
   }
 
   const handleChangePriority = (priority) => {
@@ -486,7 +561,7 @@ export const TodoBoard = () => {
     const priorityLabels = { high: 'Высокий', medium: 'Средний', low: 'Низкий' }
     updateTodo(selectedTodo.id, { priority })
     
-    sendNotificationWithSound(
+    sendNotification(
       'Приоритет изменен',
       `Приоритет карточки "${selectedTodo.title}" изменен на "${priorityLabels[priority]}"`,
       'info',
@@ -494,7 +569,6 @@ export const TodoBoard = () => {
     )
     
     setPriorityDialogOpen(false)
-    showToast('Успешно', 'Приоритет изменен', 'default')
   }
 
   const handleDeleteChecklist = async () => {
@@ -503,10 +577,7 @@ export const TodoBoard = () => {
     if (confirm('Вы уверены, что хотите удалить весь чек-лист?')) {
       try {
         await updateTodo(selectedTodo.id, { todoLists: [] })
-        showToast('Успешно', 'Чек-лист удален', 'default')
       } catch (error) {
-        console.error('Failed to delete checklist:', error)
-        showToast('Ошибка', 'Не удалось удалить чек-лист', 'destructive')
       }
     }
   }
@@ -544,45 +615,19 @@ export const TodoBoard = () => {
   const clearAllNotifications = () => {
     if (confirm('Вы уверены, что хотите удалить все уведомления?')) {
       setNotifications([])
-      showToast('Успешно', 'Все уведомления удалены', 'default')
     }
   }
 
-  const sendNotificationWithSound = (title, body, type = 'info', relatedTodoId = null) => {
-    // Добавляем уведомление в список
+  const sendNotification = (title, body, type = 'info', relatedTodoId = null) => {
     addNotification(title, body, type, relatedTodoId)
 
-    // Проверяем поддержку браузерных уведомлений
     if (notificationsEnabled && 'Notification' in window && Notification.permission === 'granted') {
-      // Создаем браузерное уведомление
       const notification = new Notification(title, {
         body,
         icon: '/favicon.ico',
         badge: '/favicon.ico',
       })
 
-      // Воспроизводим звук
-      try {
-        const audioContext = new (window.AudioContext || window.webkitAudioContext)()
-        const oscillator = audioContext.createOscillator()
-        const gainNode = audioContext.createGain()
-        
-        oscillator.connect(gainNode)
-        gainNode.connect(audioContext.destination)
-        
-        oscillator.frequency.value = 800
-        oscillator.type = 'sine'
-        
-        gainNode.gain.setValueAtTime(0.3, audioContext.currentTime)
-        gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.5)
-        
-        oscillator.start(audioContext.currentTime)
-        oscillator.stop(audioContext.currentTime + 0.5)
-      } catch (error) {
-        console.error('Ошибка воспроизведения звука:', error)
-      }
-
-      // Закрываем браузерное уведомление через 3 секунды
       setTimeout(() => {
         notification.close()
       }, 3000)
@@ -609,7 +654,6 @@ export const TodoBoard = () => {
       markNotificationAsRead(notification.id)
     }
     
-    // Если есть связанная задача, открываем её
     if (notification.relatedTodoId) {
       const todo = todos.find((t) => t.id === notification.relatedTodoId)
       if (todo) {
@@ -625,19 +669,16 @@ export const TodoBoard = () => {
 
     // Проверяем тип файла
     if (!file.type.startsWith('image/')) {
-      showToast('Ошибка', 'Выберите файл изображения', 'destructive')
       return
     }
 
     // Проверяем размер файла (макс 5MB)
     if (file.size > 5 * 1024 * 1024) {
-      showToast('Ошибка', 'Размер файла не должен превышать 5MB', 'destructive')
       return
     }
 
     setSelectedImageFile(file)
 
-    // Создаем предпросмотр
     const reader = new FileReader()
     reader.onloadend = () => {
       setImagePreview(reader.result)
@@ -647,7 +688,6 @@ export const TodoBoard = () => {
 
   const handleSetBackgroundImage = () => {
     if (!selectedTodo || !selectedImageFile) {
-      showToast('Ошибка', 'Выберите изображение', 'destructive')
       return
     }
 
@@ -655,8 +695,6 @@ export const TodoBoard = () => {
     reader.onloadend = () => {
       const imageDataUrl = reader.result
       
-      // Сохраняем изображение как backgroundImage в карточке
-      // Удаляем старое фоновое изображение, если есть
       const existingAttachments = (selectedTodo.attachments || []).filter(att => !att.isBackground)
       
       updateTodo(selectedTodo.id, { 
@@ -677,7 +715,6 @@ export const TodoBoard = () => {
       setSelectedImageFile(null)
       setImagePreview(null)
       setAttachImageDialogOpen(false)
-      showToast('Успешно', 'Фон карточки установлен', 'default')
     }
     reader.readAsDataURL(selectedImageFile)
   }
@@ -686,13 +723,11 @@ export const TodoBoard = () => {
     if (!selectedTodo) return
 
     if (confirm('Вы уверены, что хотите удалить фоновое изображение?')) {
-      // Удаляем backgroundImage и вложение-фон
       const newAttachments = (selectedTodo.attachments || []).filter((att) => !att.isBackground)
       updateTodo(selectedTodo.id, { 
         backgroundImage: null,
         attachments: newAttachments
       })
-      showToast('Успешно', 'Фоновое изображение удалено', 'default')
     }
   }
 
@@ -700,21 +735,16 @@ export const TodoBoard = () => {
     const file = e.target.files[0]
     if (!file) return
 
-    // Проверяем тип файла
     if (!file.type.startsWith('image/')) {
-      showToast('Ошибка', 'Выберите файл изображения', 'destructive')
       return
     }
 
-    // Проверяем размер файла (макс 5MB)
     if (file.size > 5 * 1024 * 1024) {
-      showToast('Ошибка', 'Размер файла не должен превышать 5MB', 'destructive')
       return
     }
 
     setColumnImageFile(file)
 
-    // Создаем предпросмотр
     const reader = new FileReader()
     reader.onloadend = () => {
       setColumnImagePreview(reader.result)
@@ -724,7 +754,6 @@ export const TodoBoard = () => {
 
   const handleSetColumnBackgroundImage = () => {
     if (!selectedColumnForBackground || !columnImageFile) {
-      showToast('Ошибка', 'Выберите изображение', 'destructive')
       return
     }
 
@@ -732,18 +761,16 @@ export const TodoBoard = () => {
     reader.onloadend = () => {
       const imageDataUrl = reader.result
       
-      // Обновляем колонку с фоновым изображением
-      setColumns(columns.map((col) =>
-        col.id === selectedColumnForBackground
-          ? { ...col, backgroundImage: imageDataUrl }
-          : col
-      ))
+    setColumns(columns.map((col) =>
+      col.id === selectedColumnForBackground
+        ? { ...col, backgroundImage: imageDataUrl, orderIndex: col.orderIndex || columns.indexOf(col).toString() }
+        : col
+    ))
       
       setColumnImageFile(null)
       setColumnImagePreview(null)
       setColumnBackgroundDialogOpen(false)
       setSelectedColumnForBackground(null)
-      showToast('Успешно', 'Фон колонки установлен', 'default')
     }
     reader.readAsDataURL(columnImageFile)
   }
@@ -752,12 +779,12 @@ export const TodoBoard = () => {
     if (confirm('Вы уверены, что хотите удалить фоновое изображение колонки?')) {
       setColumns(columns.map((col) =>
         col.id === columnId
-          ? { ...col, backgroundImage: null }
+          ? { ...col, backgroundImage: null, orderIndex: col.orderIndex || columns.indexOf(col).toString() }
           : col
       ))
-      showToast('Успешно', 'Фоновое изображение колонки удалено', 'default')
     }
   }
+
 
   const handleOpenColumnBackgroundDialog = (columnId) => {
     setSelectedColumnForBackground(columnId)
@@ -781,7 +808,6 @@ export const TodoBoard = () => {
     }
     
     updateTodo(selectedTodo.id, updates)
-    showToast('Успешно', 'Вложение удалено', 'default')
   }
 
   const handleAddCommentSubmit = async () => {
@@ -791,7 +817,7 @@ export const TodoBoard = () => {
       await addComment(selectedTodo.id, commentText, user.id, user.username)
       
       // Добавляем уведомление о новом комментарии
-      sendNotificationWithSound(
+      sendNotification(
         'Новый комментарий',
         `Добавлен комментарий к карточке "${selectedTodo.title}"`,
         'info',
@@ -799,10 +825,18 @@ export const TodoBoard = () => {
       )
       
       setCommentText('')
-      showToast('Успешно', 'Комментарий добавлен', 'default')
     } catch (error) {
-      console.error('Failed to add comment:', error)
-      showToast('Ошибка', 'Не удалось добавить комментарий', 'destructive')
+      console.error('[TodoBoard] Ошибка добавления комментария:', error)
+      let errorMessage = 'Не удалось добавить комментарий'
+      
+      if (error?.status === 403 || error?.message?.includes('не можете комментировать')) {
+        errorMessage = 'Вы не можете комментировать эту задачу'
+      } else if (error?.message) {
+        errorMessage = error.message
+      } else if (error?.detail) {
+        errorMessage = error.detail
+      }
+      
     }
   }
 
@@ -812,10 +846,7 @@ export const TodoBoard = () => {
     try {
       await addTodoListItem(selectedTodo.id, newChecklistItem)
       setNewChecklistItem('')
-      showToast('Успешно', 'Пункт добавлен', 'default')
     } catch (error) {
-      console.error('Failed to add checklist item:', error)
-      showToast('Ошибка', 'Не удалось добавить пункт', 'destructive')
     }
   }
 
@@ -824,10 +855,7 @@ export const TodoBoard = () => {
     
     try {
       await updateTodoListItem(selectedTodo.id, itemId, { checked })
-      // Progress will update automatically via WebSocket
     } catch (error) {
-      console.error('Failed to toggle checklist item:', error)
-      showToast('Ошибка', 'Не удалось обновить пункт', 'destructive')
     }
   }
 
@@ -836,24 +864,13 @@ export const TodoBoard = () => {
     
     try {
       await deleteTodoListItem(selectedTodo.id, itemId)
-      showToast('Успешно', 'Пункт удален', 'default')
     } catch (error) {
-      console.error('Failed to delete checklist item:', error)
-      showToast('Ошибка', 'Не удалось удалить пункт', 'destructive')
     }
   }
 
-  const showToast = (title, description, variant = 'default') => {
-    const id = Date.now().toString()
-    setToasts([...toasts, { id, title, description, variant }])
-    setTimeout(() => {
-      setToasts(toasts.filter((t) => t.id !== id))
-    }, 3000)
-  }
 
   const handleCreateCard = async (columnId) => {
     if (!newCardTitle.trim()) {
-      showToast('Ошибка', 'Введите название карточки', 'destructive')
       return
     }
 
@@ -878,7 +895,7 @@ export const TodoBoard = () => {
       dueDate: null,
     })
 
-      sendNotificationWithSound(
+      sendNotification(
         'Карточка создана',
         `"${newCardTitle}" создана в колонке "${column.title}"`,
         'success',
@@ -888,50 +905,111 @@ export const TodoBoard = () => {
       setNewCardTitle('')
       setCreateCardDialogOpen(false)
       setSelectedColumnId(null)
-      showToast('Успешно', 'Карточка создана', 'default')
     } catch (error) {
-      console.error('Failed to create todo:', error)
-      showToast('Ошибка', 'Не удалось создать карточку', 'destructive')
     }
   }
 
-  const handleCreateColumn = () => {
+  const handleCreateColumn = async () => {
     if (!newColumnTitle.trim()) {
-      showToast('Ошибка', 'Введите название колонки', 'destructive')
       return
     }
 
     const newColumn = {
       id: `column-${Date.now()}`,
-      title: newColumnTitle,
+      title: newColumnTitle.trim(),
       status: `custom_${Date.now()}`,
-      color: 'primary', // По умолчанию используется primary цвет
+      color: 'primary',
       backgroundImage: null,
+      orderIndex: columns.length.toString(),
     }
 
-    setColumns([...columns, newColumn])
-    setNewColumnTitle('')
-    setCreateColumnDialogOpen(false)
-    showToast('Успешно', 'Колонка создана', 'default')
+    console.log('[TodoBoard] Создание новой колонки:', newColumn)
+
+    try {
+      setIsSavingColumns(true)
+      const updatedColumns = [...columns, newColumn]
+      
+      const columnsData = updatedColumns.map((col, index) => ({
+        column_id: col.id,
+        title: col.title,
+        status: col.status,
+        color: col.color || 'primary',
+        background_image: col.backgroundImage || null,
+        order_index: col.orderIndex || index.toString(),
+      }))
+
+      console.log('[TodoBoard] Сохранение колонок в API после создания:', columnsData)
+      const response = await api.updateTodoColumns(columnsData)
+      console.log('[TodoBoard] Ответ API после создания колонки:', response)
+
+      if (response && response.length > 0) {
+        const sortedColumns = [...response].sort((a, b) => {
+          const orderA = parseInt(a.order_index || '0', 10)
+          const orderB = parseInt(b.order_index || '0', 10)
+          return orderA - orderB
+        })
+
+        const updatedColumnsFromAPI = sortedColumns.map((col) => ({
+          id: col.column_id,
+          title: col.title,
+          status: col.status,
+          color: col.color || 'primary',
+          backgroundImage: col.background_image || null,
+          orderIndex: col.order_index || '0',
+        }))
+
+        console.log('[TodoBoard] Обновленные колонки из API:', updatedColumnsFromAPI)
+        setColumns(updatedColumnsFromAPI)
+        localStorage.setItem('todoBoardColumns', JSON.stringify(updatedColumnsFromAPI))
+      } else {
+        setColumns(updatedColumns)
+        localStorage.setItem('todoBoardColumns', JSON.stringify(updatedColumns))
+      }
+
+      setNewColumnTitle('')
+      setCreateColumnDialogOpen(false)
+    } catch (error) {
+      console.error('[TodoBoard] Ошибка создания колонки:', error)
+      console.error('[TodoBoard] Детали ошибки:', {
+        message: error?.message,
+        status: error?.status,
+        detail: error?.detail,
+        stack: error?.stack
+      })
+
+      let errorMessage = 'Не удалось создать колонку'
+      
+      if (error?.status === 400) {
+        errorMessage = error?.detail || error?.message || 'Неверные данные колонки'
+      } else if (error?.status === 401) {
+        errorMessage = 'Требуется авторизация'
+      } else if (error?.status === 500) {
+        errorMessage = 'Ошибка сервера. Попробуйте позже'
+      } else if (error?.message) {
+        errorMessage = error.message
+      } else if (error?.detail) {
+        errorMessage = error.detail
+      }
+
+    } finally {
+      setIsSavingColumns(false)
+    }
   }
 
   const handleUpdateColumnColor = (columnId, color) => {
     setColumns((prevColumns) => {
       const updatedColumns = prevColumns.map((col) =>
-        col.id === columnId ? { ...col, color: color } : col
+        col.id === columnId ? { ...col, color: color, orderIndex: col.orderIndex || prevColumns.indexOf(col).toString() } : col
       )
-      // Сохраняем сразу в localStorage для надежности
       localStorage.setItem('todoBoardColumns', JSON.stringify(updatedColumns))
       return updatedColumns
     })
-    showToast('Успешно', 'Цвет колонки обновлен', 'default')
   }
 
   const handleDeleteColumn = (columnId) => {
     const column = columns.find((col) => col.id === columnId)
     if (!column) return
 
-    // Перемещаем все задачи из удаляемой колонки в первую колонку
     todos
       .filter((todo) => todo.status === column.status)
       .forEach((todo) => {
@@ -940,8 +1018,14 @@ export const TodoBoard = () => {
         }
       })
 
-    setColumns(columns.filter((col) => col.id !== columnId))
-    showToast('Успешно', 'Колонка удалена', 'default')
+    const remainingColumns = columns
+      .filter((col) => col.id !== columnId)
+      .map((col, index) => ({
+        ...col,
+        orderIndex: index.toString(),
+      }))
+
+    setColumns(remainingColumns)
   }
 
   const handleRenameColumn = (columnId) => {
@@ -954,16 +1038,14 @@ export const TodoBoard = () => {
 
   const handleSaveColumnName = (columnId) => {
     if (!editColumnTitle.trim()) {
-      showToast('Ошибка', 'Введите название колонки', 'destructive')
       return
     }
 
     setColumns(columns.map((col) =>
-      col.id === columnId ? { ...col, title: editColumnTitle } : col
+      col.id === columnId ? { ...col, title: editColumnTitle, orderIndex: col.orderIndex || columns.indexOf(col).toString() } : col
     ))
     setEditingColumnId(null)
     setEditColumnTitle('')
-    showToast('Успешно', 'Название колонки обновлено', 'default')
   }
 
   const handleDragStart = (e, todo) => {
@@ -989,29 +1071,27 @@ export const TodoBoard = () => {
     if (draggedTodo && draggedTodo.status !== column.status) {
       try {
         await moveTodo(draggedTodo.id, column.status)
-        sendNotificationWithSound(
+        sendNotification(
           'Карточка перемещена',
           `"${draggedTodo.title}" перемещена в "${column.title}"`,
           'success',
           draggedTodo.id
         )
-        showToast('Успешно', 'Карточка перемещена', 'default')
       } catch (error) {
-        console.error('Failed to move todo:', error)
-        showToast('Ошибка', 'Не удалось переместить карточку', 'destructive')
       }
     }
     setDraggedTodo(null)
   }
 
-  const filteredTodos = useMemo(() => todos.filter((todo) => {
-    if (!searchQuery) return true
+  const filteredTodos = useMemo(() => {
+    const activeTodos = todos.filter((todo) => !todo.isArchived)
+    if (!searchQuery) return activeTodos
     const query = searchQuery.toLowerCase()
-    return (
+    return activeTodos.filter((todo) => 
       todo.title.toLowerCase().includes(query) ||
       todo.description?.toLowerCase().includes(query)
     )
-  }), [todos, searchQuery])
+  }, [todos, searchQuery])
 
   const getUserInitials = (username) => {
     return username
@@ -1036,20 +1116,124 @@ export const TodoBoard = () => {
     return colors[index] || colors[0]
   }
 
-  if (!isAdmin && !isIT) {
-    return (
-      <div className="text-center py-12">
-        <p className="text-lg text-muted-foreground">Доступ запрещен</p>
-        <p className="text-sm text-muted-foreground mt-2">
-          Только администраторы и IT отдел могут просматривать список дел.
-        </p>
-      </div>
-    )
+  const handleContextMenu = (e, todo) => {
+    e.preventDefault()
+    e.stopPropagation()
+    setContextMenu({
+      todo,
+      x: e.clientX,
+      y: e.clientY,
+    })
   }
 
-  const toggleTheme = () => {
-    setTheme((prev) => (prev === 'light' ? 'dark' : 'light'))
+  const handleArchiveTodo = async (todo) => {
+    if (!todo) return
+    try {
+      await archiveTodo(todo.id)
+      setContextMenu(null)
+    } catch (error) {
+      console.error('[TodoBoard] Ошибка архивирования задачи:', error)
+      setContextMenu(null)
+    }
   }
+
+  const handleMouseDown = (e) => {
+    if (e.button !== 0) return
+    
+    const target = e.target
+    const container = scrollContainerRef.current
+    if (!container) return
+    
+    const isClickable = target.closest('button') || 
+      target.closest('input') || 
+      target.closest('textarea') || 
+      target.closest('select') ||
+      target.closest('a') ||
+      target.closest('[role="button"]') ||
+      target.closest('[role="combobox"]') ||
+      target.closest('[role="option"]') ||
+      target.closest('[role="listbox"]') ||
+      target.closest('label')
+    
+    const isTodoCard = target.closest('.todo-card')
+    const isColumnHeader = target.closest('.column-header')
+    
+    if (isClickable || isTodoCard || isColumnHeader) {
+      return
+    }
+    
+    e.preventDefault()
+    e.stopPropagation()
+    
+    const startPageX = e.pageX
+    const startScrollLeft = container.scrollLeft
+    dragStateRef.current = { startX: startPageX, scrollLeft: startScrollLeft }
+    isDraggingRef.current = true
+    setIsDragging(true)
+  }
+
+  const handleMouseMove = useCallback((e) => {
+    if (!isDraggingRef.current || !scrollContainerRef.current || !dragStateRef.current) {
+      return
+    }
+    
+    e.preventDefault()
+    e.stopPropagation()
+    
+    const container = scrollContainerRef.current
+    const deltaX = dragStateRef.current.startX - e.pageX
+    const scrollAmount = deltaX * 2
+    container.scrollLeft = dragStateRef.current.scrollLeft + scrollAmount
+  }, [])
+
+  const handleMouseUp = useCallback(() => {
+    isDraggingRef.current = false
+    setIsDragging(false)
+  }, [])
+
+  const handleMouseLeave = useCallback(() => {
+    isDraggingRef.current = false
+    setIsDragging(false)
+  }, [])
+
+  useEffect(() => {
+    if (!isDragging) {
+      return
+    }
+
+    const handleGlobalMouseMove = (e) => {
+      if (!isDraggingRef.current || !dragStateRef.current) {
+        return
+      }
+      
+      const container = scrollContainerRef.current
+      if (!container) {
+        isDraggingRef.current = false
+        setIsDragging(false)
+        return
+      }
+      
+      e.preventDefault()
+      e.stopPropagation()
+      
+      const deltaX = dragStateRef.current.startX - e.pageX
+      const scrollAmount = deltaX * 2
+      container.scrollLeft = dragStateRef.current.scrollLeft + scrollAmount
+    }
+
+    const handleGlobalMouseUp = () => {
+      isDraggingRef.current = false
+      setIsDragging(false)
+    }
+
+    document.addEventListener('mousemove', handleGlobalMouseMove, { passive: false, capture: true })
+    document.addEventListener('mouseup', handleGlobalMouseUp, { capture: true })
+
+    return () => {
+      document.removeEventListener('mousemove', handleGlobalMouseMove, { capture: true })
+      document.removeEventListener('mouseup', handleGlobalMouseUp, { capture: true })
+    }
+  }, [isDragging])
 
   const handleExportData = () => {
     const exportData = {
@@ -1072,7 +1256,6 @@ export const TodoBoard = () => {
     document.body.removeChild(link)
     URL.revokeObjectURL(url)
     
-    showToast('Успешно', 'Данные экспортированы', 'default')
   }
 
   const handleImportData = (event) => {
@@ -1092,7 +1275,7 @@ export const TodoBoard = () => {
             localStorage.setItem('todoBoardColumns', JSON.stringify(importedData.columns))
           }
           if (importedData.theme) {
-            localStorage.setItem('todoBoardTheme', importedData.theme)
+            localStorage.setItem('appTheme', importedData.theme)
             setTheme(importedData.theme)
           }
           if (importedData.notifications) {
@@ -1100,15 +1283,12 @@ export const TodoBoard = () => {
             setNotifications(importedData.notifications)
           }
           
-          showToast('Успешно', 'Данные импортированы', 'default')
           setTimeout(() => window.location.reload(), 1000)
         }
       } catch (error) {
-        showToast('Ошибка', 'Не удалось импортировать данные. Проверьте формат файла.', 'destructive')
       }
     }
     reader.readAsText(file)
-    // Сброс input для возможности повторного выбора того же файла
     event.target.value = ''
   }
 
@@ -1117,33 +1297,66 @@ export const TodoBoard = () => {
       if (confirm('Последнее предупреждение! Все задачи и колонки будут удалены. Продолжить?')) {
         localStorage.removeItem('todos')
         localStorage.removeItem('todoBoardColumns')
-        showToast('Успешно', 'Все данные удалены', 'default')
         setTimeout(() => window.location.reload(), 1000)
       }
     }
   }
 
-  const handleResetColumns = () => {
+  const handleResetColumns = async () => {
     if (confirm('Вы уверены, что хотите сбросить колонки к значениям по умолчанию?')) {
       const defaultColumns = [
-        { id: 'todo', title: 'Нужно сделать', status: 'todo', color: 'primary', backgroundImage: null },
-        { id: 'in_progress', title: 'В процессе', status: 'in_progress', color: 'secondary', backgroundImage: null },
-        { id: 'done', title: 'Готово', status: 'done', color: 'accent', backgroundImage: null },
+        { id: 'todo', title: 'К выполнению', status: 'todo', color: 'primary', backgroundImage: null, orderIndex: '0' },
+        { id: 'in_progress', title: 'В работе', status: 'in_progress', color: 'warning', backgroundImage: null, orderIndex: '1' },
+        { id: 'done', title: 'Выполнено', status: 'done', color: 'success', backgroundImage: null, orderIndex: '2' },
       ]
-      setColumns(defaultColumns)
-      localStorage.setItem('todoBoardColumns', JSON.stringify(defaultColumns))
-      showToast('Успешно', 'Колонки сброшены к значениям по умолчанию', 'default')
+      
+      try {
+        const columnsData = defaultColumns.map((col) => ({
+          column_id: col.id,
+          title: col.title,
+          status: col.status,
+          color: col.color,
+          background_image: col.backgroundImage,
+          order_index: col.orderIndex,
+        }))
+        
+        const response = await api.updateTodoColumns(columnsData)
+        if (response && response.length > 0) {
+          const sortedColumns = [...response].sort((a, b) => {
+            const orderA = parseInt(a.order_index || '0', 10)
+            const orderB = parseInt(b.order_index || '0', 10)
+            return orderA - orderB
+          })
+          
+          const updatedColumns = sortedColumns.map((col) => ({
+            id: col.column_id,
+            title: col.title,
+            status: col.status,
+            color: col.color || 'primary',
+            backgroundImage: col.background_image || null,
+            orderIndex: col.order_index || '0',
+          }))
+          
+          setColumns(updatedColumns)
+          localStorage.setItem('todoBoardColumns', JSON.stringify(updatedColumns))
+        }
+      } catch (error) {
+        setColumns(defaultColumns)
+        localStorage.setItem('todoBoardColumns', JSON.stringify(defaultColumns))
+        const errorMessage = error?.detail || error?.message || 'Не удалось сохранить колонки в API'
+      }
     }
   }
 
   return (
-    <div className="h-screen flex flex-col bg-background transition-colors duration-300 overflow-hidden">
+    <div className="h-screen flex flex-col bg-background transition-colors duration-300 overflow-hidden" style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}>
       {/* Top Navigation Bar - Transparent with Blur */}
       <div className={cn(
-        "fixed top-0 left-0 right-0 z-50 border-b px-4 py-3 flex items-center justify-between gap-4 flex-shrink-0 backdrop-blur-xl transition-all duration-300 shadow-lg shadow-black/5",
+        "fixed top-0 left-0 right-0 z-50 border-b px-4 py-3 flex items-center justify-between gap-4 flex-shrink-0 backdrop-blur-xl transition-all duration-700 shadow-lg shadow-black/5",
         theme === 'dark' 
           ? "bg-gray-900/70 border-gray-800/30 backdrop-blur-xl" 
-          : "bg-white/70 border-gray-200/30 backdrop-blur-xl"
+          : "bg-white/70 border-gray-200/30 backdrop-blur-xl",
+        isMounted ? 'opacity-100 translate-y-0' : 'opacity-0 -translate-y-4'
       )}>
         {/* Back Button */}
         <div className="flex items-center gap-4 flex-shrink-0">
@@ -1187,6 +1400,19 @@ export const TodoBoard = () => {
         <div className="flex items-center gap-2 flex-shrink-0">
           <Button
             variant="ghost"
+            onClick={() => navigate('/todos/archive')}
+            className={cn(
+              "transition-all",
+              theme === 'dark'
+                ? "text-white hover:bg-gray-800/50"
+                : "text-gray-700 hover:bg-gray-100/50"
+            )}
+          >
+            <Archive className="h-4 w-4 mr-2" />
+            Архив
+          </Button>
+          <Button
+            variant="ghost"
             size="icon"
             onClick={toggleTheme}
             className={cn(
@@ -1227,8 +1453,22 @@ export const TodoBoard = () => {
                 <Download className="h-4 w-4 mr-2" />
                 Экспорт данных
               </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => {
+                const input = document.getElementById('import-file-input')
+                if (input) input.click()
+              }}>
+                <Upload className="h-4 w-4 mr-2" />
+                Импорт данных
+              </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
+          <input
+            type="file"
+            accept=".json"
+            onChange={handleImportData}
+            className="hidden"
+            id="import-file-input"
+          />
         </div>
       </div>
 
@@ -1236,26 +1476,60 @@ export const TodoBoard = () => {
       <div className="h-[57px] flex-shrink-0"></div>
 
       {/* Main Board Area */}
-      <div className={cn(
-        "flex-1 overflow-x-auto overflow-y-hidden p-4 scrollbar-hide transition-all duration-500 min-h-0",
-        theme === 'dark'
-          ? "bg-gradient-to-br from-gray-900/95 via-gray-800/95 to-gray-900/95"
-          : "bg-gradient-to-br from-gray-50/95 via-blue-50/30 to-purple-50/30"
-      )}>
-        <div className="flex gap-4 h-full min-h-0">
-          {columns.map((column) => {
+      <div 
+        ref={scrollContainerRef}
+        onMouseDown={handleMouseDown}
+        onMouseMove={handleMouseMove}
+        onMouseUp={handleMouseUp}
+        onMouseLeave={handleMouseLeave}
+        className={cn(
+          "flex-1 overflow-x-auto overflow-y-hidden p-4 scrollbar-hide transition-all duration-700 min-h-0 relative",
+          isMounted ? 'opacity-100' : 'opacity-0',
+          isDragging ? 'cursor-grabbing select-none' : 'cursor-grab',
+          theme === 'dark' ? 'bg-gray-900' : 'bg-gray-200'
+        )} 
+        style={{ 
+          transitionDelay: '200ms',
+          scrollbarWidth: 'none',
+          msOverflowStyle: 'none',
+          WebkitOverflowScrolling: 'touch',
+          userSelect: isDragging ? 'none' : 'auto',
+          touchAction: 'pan-x'
+        }}
+      >
+        {/* Content wrapper */}
+        <div 
+          className={cn(
+            "relative z-10 flex gap-4 h-full min-h-0",
+            theme === 'dark' 
+              ? "bg-gray-900/95"
+              : "bg-gray-200/95"
+          )}
+          style={{
+            scrollbarWidth: 'none',
+            msOverflowStyle: 'none',
+            overflowY: 'hidden'
+          }}
+        >
+          {[...columns].sort((a, b) => {
+            const orderA = parseInt(a.orderIndex || '0', 10)
+            const orderB = parseInt(b.orderIndex || '0', 10)
+            return orderA - orderB
+          }).map((column, columnIndex) => {
             const columnTodos = filteredTodos.filter((todo) => todo.status === column.status)
 
             return (
               <div
                 key={column.id}
                 className={cn(
-                  "flex flex-col flex-shrink-0 w-80 h-full max-h-full rounded-xl shadow-lg relative overflow-hidden backdrop-blur-md transition-all duration-300 hover:shadow-xl",
+                  "flex flex-col flex-shrink-0 w-80 h-full max-h-full rounded-xl shadow-lg relative overflow-hidden backdrop-blur-md transition-all duration-500 hover:shadow-xl",
                   theme === 'dark' 
                     ? "bg-gray-800/40 border border-gray-700/40 backdrop-blur-md" 
-                    : "bg-white/60 border border-gray-200/50 backdrop-blur-md"
+                    : "bg-white/90 border border-gray-300/60 backdrop-blur-md",
+                  isMounted ? 'opacity-100 translate-x-0' : 'opacity-0 translate-x-4'
                 )}
                 style={{
+                  transitionDelay: `${300 + columnIndex * 100}ms`,
                   backgroundColor: column.backgroundImage 
                     ? (theme === 'dark' ? 'rgba(31, 41, 55, 0.3)' : 'rgba(255, 255, 255, 0.3)')
                     : undefined,
@@ -1266,6 +1540,13 @@ export const TodoBoard = () => {
                 }}
                 onDragOver={handleDragOver}
                 onDrop={(e) => handleDrop(e, column)}
+                onMouseDown={(e) => {
+                  const target = e.target
+                  if (target.closest('.todo-card') || target.closest('.column-header') || target.closest('button')) {
+                    return
+                  }
+                  handleMouseDown(e)
+                }}
               >
                 {column.backgroundImage && (
                   <div className={cn(
@@ -1275,7 +1556,7 @@ export const TodoBoard = () => {
                 )}
                 {/* Column Header */}
                 <div className={cn(
-                  "p-3 border-b flex items-center justify-between rounded-t-xl relative z-10 backdrop-blur-sm transition-all duration-300",
+                  "column-header p-3 border-b flex items-center justify-between rounded-t-xl relative z-10 backdrop-blur-sm transition-all duration-300",
                   colorPalette[column.color]?.header || colorPalette.primary.header,
                   "shadow-md"
                 )}>
@@ -1444,9 +1725,8 @@ export const TodoBoard = () => {
                           <DropdownMenuItem 
                             className="text-destructive"
                             onClick={() => {
-                              if (confirm(`Вы уверены, что хотите удалить колонку "${column.title}"?`)) {
-                                handleDeleteColumn(column.id)
-                              }
+                              setColumnToDelete(column)
+                              setDeleteColumnDialogOpen(true)
                             }}
                           >
                             <Trash2 className="h-4 w-4 mr-2" />
@@ -1464,24 +1744,27 @@ export const TodoBoard = () => {
                   "flex-1 overflow-y-auto p-3 space-y-2 min-h-0 scrollbar-hide relative z-10 transition-all duration-300",
                   theme === 'dark' ? "bg-transparent" : "bg-transparent"
                 )}>
-                  {columnTodos.map((todo) => (
+                  {columnTodos.map((todo, todoIndex) => (
                     <Card
                       key={todo.id}
                       draggable
                       onDragStart={(e) => handleDragStart(e, todo)}
                       onDragEnd={handleDragEnd}
+                      onContextMenu={(e) => handleContextMenu(e, todo)}
                       onClick={() => handleOpenEditDialog(todo)}
                       className={cn(
-                        "group cursor-pointer transition-all duration-300 relative overflow-hidden backdrop-blur-sm",
+                        "todo-card group cursor-pointer transition-all duration-500 relative overflow-hidden backdrop-blur-sm",
                         theme === 'dark'
                           ? "bg-gray-700/60 border-gray-600/40 hover:shadow-xl hover:border-primary/60 hover:bg-gray-700/80 hover:scale-[1.02] hover:-translate-y-0.5"
-                          : "bg-white/80 border-gray-200/60 hover:shadow-xl hover:border-primary/60 hover:bg-white/95 hover:scale-[1.02] hover:-translate-y-0.5"
+                          : "bg-white/80 border-gray-200/60 hover:shadow-xl hover:border-primary/60 hover:bg-white/95 hover:scale-[1.02] hover:-translate-y-0.5",
+                        isMounted ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4'
                       )}
                       style={{
                         backgroundImage: todo.backgroundImage ? `url(${todo.backgroundImage})` : undefined,
                         backgroundSize: 'cover',
                         backgroundPosition: 'center',
                         backgroundRepeat: 'no-repeat',
+                        transitionDelay: `${400 + columnIndex * 100 + todoIndex * 50}ms`,
                       }}
                     >
                       {todo.backgroundImage && (
@@ -1578,11 +1861,13 @@ export const TodoBoard = () => {
               <Button
                 variant="ghost"
                 className={cn(
-                  "flex-shrink-0 w-80 h-fit backdrop-blur-md border-2 border-dashed transition-all duration-300 hover:scale-[1.02]",
+                  "flex-shrink-0 w-80 h-fit backdrop-blur-md border-2 border-dashed transition-all duration-500 hover:scale-[1.02]",
                   theme === 'dark'
                     ? "bg-gray-800/40 border-gray-600/40 hover:border-primary/60 hover:bg-primary/20 text-gray-300 hover:text-primary shadow-lg hover:shadow-xl"
-                    : "bg-white/60 border-gray-300/50 hover:border-primary/60 hover:bg-primary/10 text-gray-600 hover:text-primary shadow-lg hover:shadow-xl"
+                    : "bg-white/60 border-gray-300/50 hover:border-primary/60 hover:bg-primary/10 text-gray-600 hover:text-primary shadow-lg hover:shadow-xl",
+                  isMounted ? 'opacity-100 translate-x-0' : 'opacity-0 translate-x-4'
                 )}
+                style={{ transitionDelay: `${300 + columns.length * 100}ms` }}
               >
                 <Plus className="h-4 w-4 mr-2" />
                 Добавьте еще одну колонку
@@ -1633,6 +1918,61 @@ export const TodoBoard = () => {
         </div>
       </div>
 
+      {/* Context Menu */}
+      {contextMenu && (
+        <>
+          <div
+            className="fixed inset-0 z-[99]"
+            onClick={() => setContextMenu(null)}
+          />
+          <div
+            className={cn(
+              "fixed z-[100] rounded-lg shadow-lg py-1 min-w-[180px]",
+              theme === 'dark' 
+                ? "bg-gray-800 border border-gray-700" 
+                : "bg-white border border-gray-200"
+            )}
+            style={{
+              left: contextMenu.x,
+              top: contextMenu.y,
+            }}
+          >
+            <button
+              onClick={() => handleArchiveTodo(contextMenu.todo)}
+              className={cn(
+                "w-full flex items-center px-3 py-2 text-sm transition-colors",
+                theme === 'dark' 
+                  ? "hover:bg-gray-700 text-gray-100" 
+                  : "hover:bg-gray-100 text-gray-900"
+              )}
+            >
+              <Archive className="h-4 w-4 mr-2" />
+              Архивировать
+            </button>
+            <div className={cn(
+              "h-px my-1",
+              theme === 'dark' ? "bg-gray-700" : "bg-gray-200"
+            )} />
+            <button
+              onClick={() => {
+                setTodoToDelete(contextMenu.todo)
+                setDeleteTodoDialogOpen(true)
+                setContextMenu(null)
+              }}
+              className={cn(
+                "w-full flex items-center px-3 py-2 text-sm transition-colors text-destructive",
+                theme === 'dark' 
+                  ? "hover:bg-gray-700" 
+                  : "hover:bg-gray-100"
+              )}
+            >
+              <Trash2 className="h-4 w-4 mr-2" />
+              Удалить
+            </button>
+          </div>
+        </>
+      )}
+
       {/* Edit Todo Dialog - Full Screen Modal */}
       <Dialog open={editDialogOpen} onOpenChange={handleCloseEditDialog}>
         <DialogContent className="max-w-[95vw] max-h-[95vh] w-[95vw] h-[95vh] p-0 flex flex-col [&>button]:hidden !translate-x-[-50%] !translate-y-[-50%] !left-1/2 !top-1/2 !mx-0">
@@ -1656,17 +1996,14 @@ export const TodoBoard = () => {
                       await updateTodo(selectedTodo.id, { status: newStatus })
                       const column = columns.find((col) => col.status === newStatus)
                       if (column) {
-                        sendNotificationWithSound(
+                        sendNotification(
                           'Карточка перемещена',
                           `"${selectedTodo.title}" перемещена в "${column.title}"`,
                           'success',
                           selectedTodo.id
                         )
-                        showToast('Успешно', `Карточка перемещена в "${column.title}"`, 'default')
                       }
                     } catch (error) {
-                      console.error('Failed to update todo status:', error)
-                      showToast('Ошибка', 'Не удалось переместить карточку', 'destructive')
                     }
                   }}
                 >
@@ -1690,18 +2027,17 @@ export const TodoBoard = () => {
                       setNotificationsEnabled(newState)
                       
                       if (newState) {
-                        // Запрос разрешения на уведомления
                         if ('Notification' in window && Notification.permission === 'default') {
                           Notification.requestPermission().then((permission) => {
                             if (permission === 'granted') {
-                              sendNotificationWithSound('Уведомления включены', 'Теперь вы будете получать звуковые уведомления', 'success')
+                              sendNotification('Уведомления включены', 'Теперь вы будете получать уведомления', 'success')
                             }
                           })
                         } else if (Notification.permission === 'granted') {
-                          sendNotificationWithSound('Уведомления включены', 'Теперь вы будете получать звуковые уведомления', 'success')
+                          sendNotification('Уведомления включены', 'Теперь вы будете получать уведомления', 'success')
                         }
                       } else {
-                        sendNotificationWithSound('Уведомления отключены', 'Вы больше не будете получать звуковые уведомления', 'info')
+                        sendNotification('Уведомления отключены', 'Вы больше не будете получать уведомления', 'info')
                       }
                     }}
                     title={notificationsEnabled ? "Отключить уведомления" : "Включить уведомления"}
@@ -1724,16 +2060,9 @@ export const TodoBoard = () => {
                     </DropdownMenuTrigger>
                     <DropdownMenuContent align="end">
                       <DropdownMenuItem onClick={() => {
-                        if (selectedTodo && confirm('Вы уверены, что хотите удалить эту карточку?')) {
-                          const todoTitle = selectedTodo.title
-                          deleteTodo(selectedTodo.id)
-                          sendNotificationWithSound(
-                            'Карточка удалена',
-                            `Карточка "${todoTitle}" перемещена в архив`,
-                            'warning'
-                          )
-                          handleCloseEditDialog()
-                          showToast('Успешно', 'Карточка удалена', 'default')
+                        if (selectedTodo) {
+                          setTodoToDelete(selectedTodo)
+                          setDeleteTodoDialogOpen(true)
                         }
                       }}>
                         <Trash2 className="h-4 w-4 mr-2" />
@@ -1744,7 +2073,7 @@ export const TodoBoard = () => {
                         if (selectedTodo) {
                           const wasInFocus = selectedTodo.inFocus
                           updateTodo(selectedTodo.id, { inFocus: !selectedTodo.inFocus })
-                          sendNotificationWithSound(
+                          sendNotification(
                             wasInFocus ? 'Убрано из фокуса' : 'Добавлено в фокус',
                             wasInFocus 
                               ? `"${selectedTodo.title}" убрана из фокуса`
@@ -1752,7 +2081,6 @@ export const TodoBoard = () => {
                             'info',
                             selectedTodo.id
                           )
-                          showToast('Успешно', wasInFocus ? 'Убрано из фокуса' : 'Добавлено в фокус', 'default')
                         }
                       }}>
                         <Star className={cn("h-4 w-4 mr-2", selectedTodo?.inFocus && "fill-yellow-400")} />
@@ -1767,7 +2095,6 @@ export const TodoBoard = () => {
                         if (selectedTodo) {
                           const todoText = `Название: ${selectedTodo.title}\nОписание: ${selectedTodo.description || 'Нет описания'}\nСтатус: ${columns.find(col => col.status === selectedTodo.status)?.title || selectedTodo.status}`
                           navigator.clipboard.writeText(todoText)
-                          showToast('Успешно', 'Информация о карточке скопирована', 'default')
                         }
                       }}>
                         <Paperclip className="h-4 w-4 mr-2" />
@@ -2315,7 +2642,6 @@ export const TodoBoard = () => {
                     updateTodo(selectedTodo.id, { dueDate: null })
                     setEditDueDate('')
                     setDatesDialogOpen(false)
-                    showToast('Успешно', 'Дата удалена', 'default')
                   }
                 }}
               >
@@ -2391,7 +2717,6 @@ export const TodoBoard = () => {
                     if (selectedTodo) {
                       updateTodo(selectedTodo.id, { priority: 'medium' })
                       setPriorityDialogOpen(false)
-                      showToast('Успешно', 'Приоритет сброшен', 'default')
                     }
                   }}
                 >
@@ -2838,7 +3163,107 @@ export const TodoBoard = () => {
         </DialogContent>
       </Dialog>
 
-      <ToastContainer toasts={toasts} setToasts={setToasts} />
+      {/* Delete Column Confirmation Dialog */}
+      <Dialog open={deleteColumnDialogOpen} onOpenChange={setDeleteColumnDialogOpen}>
+        <DialogContent className="sm:max-w-[425px]">
+          <DialogHeader>
+            <DialogTitle>Подтвердите удаление</DialogTitle>
+            <DialogDescription>
+              Вы уверены, что хотите удалить колонку "{columnToDelete?.title}"?
+              {columnToDelete && todos.filter(todo => todo.status === columnToDelete.status).length > 0 && (
+                <span className="block mt-2 text-destructive">
+                  В этой колонке есть задачи. Они будут перемещены в первую колонку.
+                </span>
+              )}
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="gap-2 sm:gap-0">
+            <Button
+              variant="outline"
+              onClick={() => {
+                setDeleteColumnDialogOpen(false)
+                setColumnToDelete(null)
+              }}
+            >
+              Отмена
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={() => {
+                if (columnToDelete) {
+                  handleDeleteColumn(columnToDelete.id)
+                  setDeleteColumnDialogOpen(false)
+                  setColumnToDelete(null)
+                }
+              }}
+            >
+              Удалить
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Delete Todo Confirmation Dialog */}
+      <Dialog open={deleteTodoDialogOpen} onOpenChange={setDeleteTodoDialogOpen}>
+        <DialogContent className="sm:max-w-[425px]">
+          <DialogHeader>
+            <DialogTitle>Подтвердите удаление</DialogTitle>
+            <DialogDescription>
+              Вы уверены, что хотите удалить карточку "{todoToDelete?.title}"?
+              <span className="block mt-2 text-destructive">
+                Это действие нельзя отменить. Карточка будет полностью удалена.
+              </span>
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="gap-2 sm:gap-0">
+            <Button
+              variant="outline"
+              onClick={() => {
+                setDeleteTodoDialogOpen(false)
+                setTodoToDelete(null)
+              }}
+            >
+              Отмена
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={async () => {
+                if (todoToDelete) {
+                  const todoTitle = todoToDelete.title
+                  try {
+                    await deleteTodo(todoToDelete.id)
+                    sendNotification(
+                      'Карточка удалена',
+                      `Карточка "${todoTitle}" полностью удалена`,
+                      'warning'
+                    )
+                    setDeleteTodoDialogOpen(false)
+                    setTodoToDelete(null)
+                    handleCloseEditDialog()
+                  } catch (error) {
+                    console.error('[TodoBoard] Ошибка архивирования задачи:', error)
+                    let errorMessage = 'Не удалось архивировать задачу'
+                    
+                    if (error?.status === 403 || error?.message?.includes('не можете удалить')) {
+                      errorMessage = 'Вы не можете удалить эту задачу'
+                    } else if (error?.message) {
+                      errorMessage = error.message
+                    } else if (error?.detail) {
+                      errorMessage = error.detail
+                    }
+                    
+                    setDeleteTodoDialogOpen(false)
+                    setTodoToDelete(null)
+                  }
+                }
+              }}
+            >
+              Удалить
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
     </div>
   )
 }

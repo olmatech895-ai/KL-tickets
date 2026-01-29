@@ -70,7 +70,7 @@ export const Sidebar = ({ mobileMenuOpen, setMobileMenuOpen }) => {
       label: 'Список дел',
       icon: CheckSquare,
       path: '/todos',
-      visible: isAdmin || isIT,
+      visible: true,
     },
     {
       id: 'tickets',

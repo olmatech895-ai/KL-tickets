@@ -12,25 +12,29 @@ export const useTheme = () => {
 
 export const ThemeProvider = ({ children }) => {
   const [theme, setTheme] = useState(() => {
-    // Загружаем тему из localStorage или используем системную
     const saved = localStorage.getItem('appTheme')
     if (saved) return saved
+    
+    const oldTodoBoardTheme = localStorage.getItem('todoBoardTheme')
+    if (oldTodoBoardTheme) {
+      localStorage.setItem('appTheme', oldTodoBoardTheme)
+      localStorage.removeItem('todoBoardTheme')
+      return oldTodoBoardTheme
+    }
+    
     return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'
   })
 
   useEffect(() => {
-    // Применяем тему к document.documentElement
     const root = document.documentElement
     if (theme === 'dark') {
       root.classList.add('dark')
     } else {
       root.classList.remove('dark')
     }
-    // Сохраняем в localStorage
     localStorage.setItem('appTheme', theme)
   }, [theme])
 
-  // Применяем тему сразу при монтировании компонента
   useEffect(() => {
     const root = document.documentElement
     const savedTheme = localStorage.getItem('appTheme')

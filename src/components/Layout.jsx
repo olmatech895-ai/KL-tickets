@@ -5,7 +5,7 @@ import { Sidebar } from './Sidebar'
 export const Layout = ({ children }) => {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
   const location = useLocation()
-  const isTodoBoard = location.pathname === '/todos'
+  const isTodoBoard = location.pathname === '/todos' || location.pathname === '/todos/archive'
 
   return (
     <div className="min-h-screen bg-background flex">

@@ -1,4 +1,4 @@
-export const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'https://testdomen.uz/api/v1'
+export const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000/api/v1'
 
 export const getAuthToken = () => {
   return localStorage.getItem('auth_token')
@@ -38,7 +38,9 @@ export const apiRequest = async (endpoint, options = {}) => {
     
     if (response.status === 401) {
       removeAuthToken()
-      throw new Error('Unauthorized')
+      const error = new Error('Unauthorized')
+      error.status = 401
+      throw error
     }
 
     const contentType = response.headers.get('content-type')
@@ -53,7 +55,10 @@ export const apiRequest = async (endpoint, options = {}) => {
           }
         } catch {
         }
-        throw new Error(data.detail || data.message || 'Request failed')
+        const error = new Error(data.detail || data.message || 'Request failed')
+        error.status = response.status
+        error.detail = data.detail
+        throw error
       }
       return null
     }
@@ -79,9 +84,21 @@ export const apiRequest = async (endpoint, options = {}) => {
 
     return data
   } catch (error) {
-    if (error.message === 'Unauthorized') {
+    if (error.message === 'Unauthorized' || error.status === 401) {
       throw error
     }
+    
+    if (error instanceof TypeError && error.message.includes('fetch')) {
+      const networkError = new Error('Ошибка сети. Проверьте подключение к серверу.')
+      networkError.status = 0
+      networkError.isNetworkError = true
+      throw networkError
+    }
+    
+    if (!error.status) {
+      error.status = 0
+    }
+    
     throw error
   }
 }
@@ -144,6 +161,18 @@ export const api = {
   deleteUser: async (userId) => {
     return apiRequest(`/users/${userId}`, {
       method: 'DELETE',
+    })
+  },
+
+  getTelegramLink: async () => {
+    return apiRequest('/telegram/link', {
+      method: 'GET',
+    })
+  },
+
+  getTelegramStatus: async () => {
+    return apiRequest('/telegram/status', {
+      method: 'GET',
     })
   },
 
@@ -255,7 +284,11 @@ export const api = {
   },
 
   getTodos: async () => {
-    return apiRequest('/todos/')
+    return apiRequest('/todos')
+  },
+
+  getArchivedTodos: async () => {
+    return apiRequest('/todos/archived')
   },
 
   getMyTodos: async () => {
@@ -271,7 +304,7 @@ export const api = {
   },
 
   createTodo: async (data) => {
-    return apiRequest('/todos/', {
+    return apiRequest('/todos', {
       method: 'POST',
       body: JSON.stringify(data),
     })

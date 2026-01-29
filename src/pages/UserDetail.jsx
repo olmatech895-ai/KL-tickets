@@ -17,9 +17,6 @@ export const UserDetail = () => {
   const [loading, setLoading] = useState(true)
 
   const showToast = (title, description, variant = 'default') => {
-    // Simple toast notification
-    console.log(`${title}: ${description}`)
-    // You can replace this with a proper toast implementation if needed
   }
 
   useEffect(() => {
@@ -31,7 +28,6 @@ export const UserDetail = () => {
           setUserDetail(foundUser)
         }
       } catch (error) {
-        console.error('Failed to load user:', error)
       } finally {
         setLoading(false)
       }

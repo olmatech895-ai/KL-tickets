@@ -37,6 +37,7 @@ export const Inventory = () => {
   const [editingItem, setEditingItem] = useState(null)
   const [loading, setLoading] = useState(false)
   const [toasts, setToasts] = useState([])
+  const [isMounted, setIsMounted] = useState(false)
   const [formData, setFormData] = useState({
     name: '',
     type: '',
@@ -50,6 +51,7 @@ export const Inventory = () => {
   })
 
   useEffect(() => {
+    setIsMounted(true)
     loadInventory()
   }, [])
 
@@ -59,7 +61,6 @@ export const Inventory = () => {
       const items = await api.getInventoryItems()
       setInventory(items)
     } catch (error) {
-      console.error('Failed to load inventory:', error)
       showToast('Ошибка', 'Не удалось загрузить инвентарь', 'destructive')
     } finally {
       setLoading(false)
@@ -143,7 +144,6 @@ export const Inventory = () => {
       })
       showToast('Успешно', 'Техника обновлена', 'default')
     } catch (error) {
-      console.error('Failed to update inventory item:', error)
       showToast('Ошибка', 'Не удалось обновить технику', 'destructive')
     } finally {
       setLoading(false)
@@ -176,7 +176,6 @@ export const Inventory = () => {
       
       showToast('Успешно', 'Ответственный обновлен', 'default')
     } catch (error) {
-      console.error('Failed to update responsible:', error)
       showToast('Ошибка', 'Не удалось обновить ответственного', 'destructive')
     }
   }
@@ -227,7 +226,6 @@ export const Inventory = () => {
       })
       showToast('Успешно', 'Техника добавлена в инвентарь', 'default')
     } catch (error) {
-      console.error('Failed to create inventory item:', error)
       showToast('Ошибка', 'Не удалось добавить технику', 'destructive')
     } finally {
       setLoading(false)
@@ -392,14 +390,18 @@ export const Inventory = () => {
 
   return (
     <div className="space-y-4 md:space-y-6 px-4 md:px-6 lg:px-8 w-full pt-16 lg:pt-4 sm:pt-6">
-      <div className="flex flex-col gap-4 pl-12 lg:pl-0">
+      <div className={`flex flex-col gap-4 pl-12 lg:pl-0 transition-all duration-700 ${
+        isMounted ? 'opacity-100 translate-y-0' : 'opacity-0 -translate-y-4'
+      }`}>
         <div>
           <h1 className="text-xl sm:text-2xl lg:text-3xl xl:text-4xl font-bold leading-tight">Инвентаризация техники</h1>
           <p className="text-muted-foreground mt-1.5 sm:mt-2 text-xs sm:text-sm md:text-base">
             Просмотр инвентаря техники компании
           </p>
         </div>
-        <div className="flex flex-col xs:flex-row gap-2">
+        <div className={`flex flex-col xs:flex-row gap-2 transition-all duration-700 ${
+          isMounted ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4'
+        }`} style={{ transitionDelay: '100ms' }}>
           <Button onClick={() => setCreateDialogOpen(true)} className="w-full xs:w-auto text-sm sm:text-base">
             <Plus className="h-4 w-4 mr-2" />
             Добавить технику
@@ -413,7 +415,9 @@ export const Inventory = () => {
         </div>
       </div>
 
-      <Card className="overflow-hidden">
+      <Card className={`overflow-hidden transition-all duration-700 ${
+        isMounted ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4'
+      }`} style={{ transitionDelay: '200ms' }}>
         <CardHeader className="px-4 md:px-6 pt-4 md:pt-6 pb-3 md:pb-4">
           <CardTitle className="flex items-center gap-2 text-lg md:text-xl">
             <Package className="h-5 w-5" />
@@ -425,11 +429,15 @@ export const Inventory = () => {
         </CardHeader>
         <CardContent className="p-0 md:p-6">
           {loading ? (
-            <div className="text-center py-12 px-4">
+            <div className={`text-center py-12 px-4 transition-all duration-700 ${
+              isMounted ? 'opacity-100 scale-100' : 'opacity-0 scale-95'
+            }`} style={{ transitionDelay: '300ms' }}>
               <p className="text-muted-foreground">Загрузка...</p>
             </div>
           ) : inventory.length === 0 ? (
-            <div className="text-center py-12 px-4">
+            <div className={`text-center py-12 px-4 transition-all duration-700 ${
+              isMounted ? 'opacity-100 scale-100' : 'opacity-0 scale-95'
+            }`} style={{ transitionDelay: '300ms' }}>
               <Package className="h-12 w-12 mx-auto mb-4 opacity-50" />
               <p className="text-muted-foreground">
                 Техника еще не добавлена в инвентарь
@@ -445,8 +453,10 @@ export const Inventory = () => {
             <>
               {/* Mobile Card View */}
               <div className="block md:hidden space-y-3">
-                {inventory.map((item) => (
-                  <Card key={item.id} className="hover:shadow-md transition-all duration-200 border overflow-hidden">
+                {inventory.map((item, index) => (
+                  <Card key={item.id} className={`hover:shadow-md transition-all duration-500 border overflow-hidden ${
+                    isMounted ? 'opacity-100 translate-x-0' : 'opacity-0 -translate-x-4'
+                  }`} style={{ transitionDelay: `${300 + index * 50}ms` }}>
                     <CardContent className="p-0">
                       <div className="flex flex-col sm:flex-row">
                         {/* Image Section */}
@@ -557,8 +567,10 @@ export const Inventory = () => {
                             </TableRow>
                           </TableHeader>
                       <TableBody>
-                        {inventory.map((item) => (
-                          <TableRow key={item.id} className="hover:bg-muted/50 transition-colors">
+                        {inventory.map((item, index) => (
+                          <TableRow key={item.id} className={`hover:bg-muted/50 transition-all duration-500 ${
+                            isMounted ? 'opacity-100 translate-x-0' : 'opacity-0 -translate-x-4'
+                          }`} style={{ transitionDelay: `${300 + index * 50}ms` }}>
                             <TableCell className="py-3">
                               {item.photo ? (
                                 <img

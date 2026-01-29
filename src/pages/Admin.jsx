@@ -53,9 +53,11 @@ export const Admin = () => {
   const [userToDelete, setUserToDelete] = useState(null)
   const [toasts, setToasts] = useState([])
   const [ticketsPage, setTicketsPage] = useState(1)
+  const [isMounted, setIsMounted] = useState(false)
   const ticketsPerPage = 10
 
   useEffect(() => {
+    setIsMounted(true)
     loadUsersList()
   }, [])
 
@@ -98,7 +100,6 @@ export const Admin = () => {
   const handleDeleteConfirm = async () => {
     if (!userToDelete) return
     
-    // Double check - prevent self-deletion
     if (userToDelete.id === user.id) {
       showToast('Ошибка', 'Вы не можете удалить свой собственный аккаунт', 'destructive')
       setDeleteDialogOpen(false)
@@ -113,10 +114,8 @@ export const Admin = () => {
       setDeleteDialogOpen(false)
       setUserToDelete(null)
     } catch (error) {
-      console.error('Failed to delete user:', error)
       const errorMessage = error.message || error.detail || 'Не удалось удалить пользователя'
       showToast('Ошибка', errorMessage, 'destructive')
-      // Don't close dialog on error so user can try again
     }
   }
 
@@ -160,7 +159,9 @@ export const Admin = () => {
 
   return (
     <div className="space-y-6 md:space-y-8 px-4 md:px-6 lg:px-8 max-w-7xl mx-auto pt-16 lg:pt-4 sm:pt-6">
-      <div className="pl-12 lg:pl-0">
+      <div className={`pl-12 lg:pl-0 transition-all duration-700 ${
+        isMounted ? 'opacity-100 translate-y-0' : 'opacity-0 -translate-y-4'
+      }`}>
         <h1 className="text-2xl sm:text-3xl lg:text-4xl font-bold">Админ-панель</h1>
         <p className="text-muted-foreground mt-2 text-sm sm:text-base">
           Управление системой, пользователями и тикетами
@@ -169,7 +170,9 @@ export const Admin = () => {
 
       {/* Stats Cards */}
       <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-4">
-        <Card>
+        <Card className={`hover:shadow-lg transition-all duration-500 ${
+          isMounted ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4'
+        }`} style={{ transitionDelay: '100ms' }}>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Всего пользователей</CardTitle>
             <Users className="h-4 w-4 text-muted-foreground" />
@@ -182,7 +185,9 @@ export const Admin = () => {
           </CardContent>
         </Card>
 
-        <Card>
+        <Card className={`hover:shadow-lg transition-all duration-500 ${
+          isMounted ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4'
+        }`} style={{ transitionDelay: '200ms' }}>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Всего тикетов</CardTitle>
             <Ticket className="h-4 w-4 text-muted-foreground" />
@@ -195,7 +200,9 @@ export const Admin = () => {
           </CardContent>
         </Card>
 
-        <Card>
+        <Card className={`hover:shadow-lg transition-all duration-500 ${
+          isMounted ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4'
+        }`} style={{ transitionDelay: '300ms' }}>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Заблокировано</CardTitle>
             <Ban className="h-4 w-4 text-destructive" />
@@ -208,7 +215,9 @@ export const Admin = () => {
           </CardContent>
         </Card>
 
-        <Card>
+        <Card className={`hover:shadow-lg transition-all duration-500 ${
+          isMounted ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4'
+        }`} style={{ transitionDelay: '400ms' }}>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">IT специалистов</CardTitle>
             <UserCheck className="h-4 w-4 text-muted-foreground" />
@@ -222,7 +231,9 @@ export const Admin = () => {
         </Card>
       </div>
 
-      <Tabs defaultValue="users" className="w-full">
+      <Tabs defaultValue="users" className={`w-full transition-all duration-700 ${
+        isMounted ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4'
+      }`} style={{ transitionDelay: '500ms' }}>
         <TabsList>
           <TabsTrigger value="users">Пользователи</TabsTrigger>
           <TabsTrigger value="tickets">Все тикеты</TabsTrigger>
@@ -250,18 +261,22 @@ export const Admin = () => {
               </div>
 
               {filteredUsers.length === 0 ? (
-                <p className="text-muted-foreground text-center py-8">
+                <p className={`text-muted-foreground text-center py-8 transition-all duration-700 ${
+                  isMounted ? 'opacity-100 scale-100' : 'opacity-0 scale-95'
+                }`} style={{ transitionDelay: '600ms' }}>
                   Пользователи не найдены
                 </p>
               ) : (
                 <div className="space-y-2">
-                  {filteredUsers.map((u) => (
+                  {filteredUsers.map((u, index) => (
                     <div
                       key={u.id}
                       className={cn(
-                        'flex flex-col sm:flex-row items-start sm:items-center justify-between p-4 border rounded-lg gap-4',
-                        u.blocked && 'bg-muted opacity-60'
+                        'flex flex-col sm:flex-row items-start sm:items-center justify-between p-4 border rounded-lg gap-4 transition-all duration-500 hover:shadow-md',
+                        u.blocked && 'bg-muted opacity-60',
+                        isMounted ? 'opacity-100 translate-x-0' : 'opacity-0 -translate-x-4'
                       )}
+                      style={{ transitionDelay: `${600 + index * 50}ms` }}
                     >
                       <div className="flex items-center gap-4 flex-1 min-w-0">
                         <div className="flex-1 min-w-0">
@@ -370,19 +385,24 @@ export const Admin = () => {
             </CardHeader>
             <CardContent>
               {tickets.length === 0 ? (
-                <p className="text-muted-foreground text-center py-8">
+                <p className={`text-muted-foreground text-center py-8 transition-all duration-700 ${
+                  isMounted ? 'opacity-100 scale-100' : 'opacity-0 scale-95'
+                }`} style={{ transitionDelay: '600ms' }}>
                   Тикетов пока нет
                 </p>
               ) : (
                 <>
                   <div className="space-y-2">
-                    {paginatedTickets.map((ticket) => (
+                    {paginatedTickets.map((ticket, index) => (
                       <Link
                         key={ticket.id}
                         to={`/ticket/${ticket.id}`}
-                        className="block"
+                        className={`block transition-all duration-500 ${
+                          isMounted ? 'opacity-100 translate-x-0' : 'opacity-0 -translate-x-4'
+                        }`}
+                        style={{ transitionDelay: `${600 + index * 50}ms` }}
                       >
-                        <div className="p-4 border rounded-lg hover:bg-accent transition-colors">
+                        <div className="p-4 border rounded-lg hover:bg-accent transition-colors hover:shadow-md">
                           <div className="flex items-start justify-between">
                             <div className="flex-1 min-w-0">
                               <h3 className="font-semibold mb-1">{ticket.title}</h3>

@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo } from 'react'
 import { Link } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
+import { api } from '../config/api'
 import { useTickets } from '../context/TicketsContext'
 import { ToastContainer } from '../components/ui/toast'
 import { Button } from '../components/ui/button'
@@ -26,12 +27,37 @@ export const Home = () => {
   const tickets = useMemo(() => getTicketsForUser(), [getTicketsForUser])
   const [dialogOpen, setDialogOpen] = useState(false)
   const [toasts, setToasts] = useState([])
+  const [isMounted, setIsMounted] = useState(false)
+  const [telegramStatus, setTelegramStatus] = useState('unknown') // 'unknown' | 'not_connected' | 'connected'
+  const [isTelegramLoading, setIsTelegramLoading] = useState(false)
   const [formData, setFormData] = useState({
     title: '',
     description: '',
     priority: 'medium',
     category: 'other',
   })
+
+  useEffect(() => {
+    setIsMounted(true)
+  }, [])
+
+  useEffect(() => {
+    const loadTelegramStatus = async () => {
+      try {
+        const data = await api.getTelegramStatus()
+        const isConnected =
+          data?.registered ||
+          data?.linked ||
+          data?.is_linked ||
+          data?.status === 'connected'
+        setTelegramStatus(isConnected ? 'connected' : 'not_connected')
+      } catch {
+        setTelegramStatus('unknown')
+      }
+    }
+
+    loadTelegramStatus()
+  }, [])
 
   const stats = {
     total: tickets.length,
@@ -75,11 +101,11 @@ export const Home = () => {
   const getStatusText = (status) => {
     switch (status) {
       case 'open':
-        return 'Открытый'
+        return 'Открыт'
       case 'in_progress':
-        return 'Взять на разработку'
+        return 'В работе'
       case 'closed':
-        return 'Закрыть тикет'
+        return 'Закрыт'
       default:
         return status
     }
@@ -126,8 +152,6 @@ export const Home = () => {
       })
       setDialogOpen(false)
     } catch (error) {
-      console.error('Failed to create ticket:', error)
-      // Можно добавить toast уведомление об ошибке
     }
   }
 
@@ -141,10 +165,37 @@ export const Home = () => {
     setDialogOpen(false)
   }
 
+  const handleConnectTelegram = async () => {
+    try {
+      setIsTelegramLoading(true)
+      const data = await api.getTelegramLink()
+      const url = data?.url || data?.link || data?.telegram_link
+
+      if (!url) {
+        showToast(
+          'Ошибка',
+          'Сервер не вернул ссылку для подключения Telegram.',
+          'destructive'
+        )
+        return
+      }
+
+      window.open(url, '_blank', 'noopener,noreferrer')
+    } catch (error) {
+      const message =
+        error?.message || 'Не удалось получить ссылку для подключения Telegram.'
+      showToast('Ошибка', message, 'destructive')
+    } finally {
+      setIsTelegramLoading(false)
+    }
+  }
+
   return (
     <div className="space-y-6 md:space-y-8 px-4 md:px-6 lg:px-8 max-w-7xl mx-auto">
       {/* Header Section */}
-      <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4 sm:gap-6 pt-16 lg:pt-4 sm:pt-6 pl-0 lg:pl-0">
+      <div className={`flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4 sm:gap-6 pt-16 lg:pt-4 sm:pt-6 pl-0 lg:pl-0 transition-all duration-700 ${
+        isMounted ? 'opacity-100 translate-y-0' : 'opacity-0 -translate-y-4'
+      }`}>
         <div className="flex-1 min-w-0 space-y-2 pl-12 lg:pl-0">
           <h1 className="text-3xl sm:text-4xl lg:text-5xl font-bold break-words bg-gradient-to-r from-foreground to-foreground/70 bg-clip-text text-transparent">
             Добро пожаловать, {user?.username}!
@@ -171,7 +222,9 @@ export const Home = () => {
 
       {/* Stats Cards */}
       <div className="grid gap-4 sm:gap-6 grid-cols-1 sm:grid-cols-2 lg:grid-cols-4">
-        <Card className="hover:shadow-lg transition-shadow border-2 hover:border-primary/20">
+        <Card className={`hover:shadow-lg transition-all duration-500 border-2 hover:border-primary/20 ${
+          isMounted ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4'
+        }`} style={{ transitionDelay: '100ms' }}>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium text-muted-foreground">Всего тикетов</CardTitle>
             <Ticket className="h-5 w-5 text-muted-foreground" />
@@ -181,7 +234,9 @@ export const Home = () => {
             <p className="text-xs text-muted-foreground mt-1">Всего заявок</p>
           </CardContent>
         </Card>
-        <Card className="hover:shadow-lg transition-shadow border-2 hover:border-blue-500/20">
+        <Card className={`hover:shadow-lg transition-all duration-500 border-2 hover:border-blue-500/20 ${
+          isMounted ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4'
+        }`} style={{ transitionDelay: '200ms' }}>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium text-muted-foreground">Открыто</CardTitle>
             <Clock className="h-5 w-5 text-blue-500" />
@@ -191,7 +246,9 @@ export const Home = () => {
             <p className="text-xs text-muted-foreground mt-1">Требуют внимания</p>
           </CardContent>
         </Card>
-        <Card className="hover:shadow-lg transition-shadow border-2 hover:border-yellow-500/20">
+        <Card className={`hover:shadow-lg transition-all duration-500 border-2 hover:border-yellow-500/20 ${
+          isMounted ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4'
+        }`} style={{ transitionDelay: '300ms' }}>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium text-muted-foreground">В работе</CardTitle>
             <Clock className="h-5 w-5 text-yellow-500" />
@@ -201,7 +258,9 @@ export const Home = () => {
             <p className="text-xs text-muted-foreground mt-1">В процессе</p>
           </CardContent>
         </Card>
-        <Card className="hover:shadow-lg transition-shadow border-2 hover:border-green-500/20">
+        <Card className={`hover:shadow-lg transition-all duration-500 border-2 hover:border-green-500/20 ${
+          isMounted ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4'
+        }`} style={{ transitionDelay: '400ms' }}>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium text-muted-foreground">Закрыто</CardTitle>
             <CheckCircle className="h-5 w-5 text-green-500" />
@@ -213,8 +272,45 @@ export const Home = () => {
         </Card>
       </div>
 
+      {/* Telegram notifications */}
+      {telegramStatus !== 'connected' && (
+        <Card
+          className={`transition-all duration-700 ${
+            isMounted ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4'
+          }`}
+          style={{ transitionDelay: '450ms' }}
+        >
+          <CardHeader className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+            <div>
+              <CardTitle className="text-lg">Telegram уведомления</CardTitle>
+              <CardDescription>
+                Получайте уведомления о новых и обновленных тикетах в Telegram-боте.
+              </CardDescription>
+            </div>
+            <div className="text-sm">
+              {telegramStatus === 'not_connected' && (
+                <span className="text-muted-foreground">Статус: не подключено</span>
+              )}
+              {telegramStatus === 'unknown' && (
+                <span className="text-muted-foreground">Статус: неизвестен</span>
+              )}
+            </div>
+          </CardHeader>
+          <CardContent>
+            <Button
+              className="w-full sm:w-auto"
+              onClick={handleConnectTelegram}
+              disabled={isTelegramLoading}
+            >
+              {isTelegramLoading ? 'Открываем Telegram...' : 'Подключить Telegram'}
+            </Button>
+          </CardContent>
+        </Card>
+      )}
       {/* Recent Tickets Section */}
-      <Card className="shadow-lg">
+      <Card className={`shadow-lg transition-all duration-700 ${
+        isMounted ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4'
+      }`} style={{ transitionDelay: '500ms' }}>
         <CardHeader className="pb-4">
           <div className="flex items-center justify-between">
             <div>
@@ -228,7 +324,7 @@ export const Home = () => {
             {recentTickets.length > 0 && (
               <Link
                 to="/tickets"
-                className="text-sm text-primary hover:underline font-medium"
+                className="text-sm text-primary hover:underline font-medium transition-colors"
               >
                 Все тикеты →
               </Link>
@@ -237,7 +333,9 @@ export const Home = () => {
         </CardHeader>
         <CardContent>
           {recentTickets.length === 0 ? (
-            <div className="text-center py-12 sm:py-16 text-muted-foreground">
+            <div className={`text-center py-12 sm:py-16 text-muted-foreground transition-all duration-700 ${
+              isMounted ? 'opacity-100 scale-100' : 'opacity-0 scale-95'
+            }`} style={{ transitionDelay: '600ms' }}>
               {!isIT || isAdmin ? (
                 <>
                   <Ticket className="h-16 w-16 mx-auto mb-6 opacity-50" />
@@ -257,11 +355,14 @@ export const Home = () => {
             </div>
           ) : (
             <div className="space-y-3 sm:space-y-4">
-              {recentTickets.map((ticket) => (
+              {recentTickets.map((ticket, index) => (
                 <Link
                   key={ticket.id}
                   to={`/ticket/${ticket.id}`}
-                  className="block p-4 sm:p-5 border-2 rounded-xl hover:bg-accent/50 hover:border-primary/50 transition-all hover:shadow-md group"
+                  className={`block p-4 sm:p-5 border-2 rounded-xl hover:bg-accent/50 hover:border-primary/50 transition-all hover:shadow-md group ${
+                    isMounted ? 'opacity-100 translate-x-0' : 'opacity-0 -translate-x-4'
+                  }`}
+                  style={{ transitionDelay: `${600 + index * 100}ms` }}
                 >
                   <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
                     <div className="flex-1 min-w-0">

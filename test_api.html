@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>API Test - localhost:8000</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 50px auto;
+            padding: 20px;
+            background: #f5f5f5;
+        }
+        .container {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        button {
+            background: #007bff;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 4px;
+            cursor: pointer;
+            margin: 5px;
+        }
+        button:hover {
+            background: #0056b3;
+        }
+        .result {
+            margin-top: 20px;
+            padding: 15px;
+            background: #f8f9fa;
+            border-radius: 4px;
+            white-space: pre-wrap;
+            font-family: monospace;
+            font-size: 12px;
+        }
+        .success {
+            border-left: 4px solid #28a745;
+        }
+        .error {
+            border-left: 4px solid #dc3545;
+        }
+        h1 {
+            color: #333;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🔍 API Server Test</h1>
+        <p>Проверка работы backend сервера на <strong>http://localhost:8000</strong></p>
+        
+        <div>
+            <button onclick="testRoot()">Тест корневого пути (/)</button>
+            <button onclick="testDocs()">Тест документации (/docs)</button>
+            <button onclick="testHealth()">Тест health check</button>
+            <button onclick="testAPI()">Тест API (/api/v1)</button>
+        </div>
+        
+        <div id="result" class="result" style="display: none;"></div>
+    </div>
+
+    <script>
+        const API_BASE = 'http://localhost:8000';
+        
+        async function makeRequest(url, label) {
+            const resultDiv = document.getElementById('result');
+            resultDiv.style.display = 'block';
+            resultDiv.className = 'result';
+            resultDiv.textContent = `⏳ Запрос к ${url}...`;
+            
+            try {
+                const startTime = Date.now();
+                const response = await fetch(url, {
+                    method: 'GET',
+                    headers: {
+                        'Accept': 'application/json',
+                    }
+                });
+                const endTime = Date.now();
+                const duration = endTime - startTime;
+                
+                let data;
+                const contentType = response.headers.get('content-type');
+                
+                if (contentType && contentType.includes('application/json')) {
+                    data = await response.json();
+                } else {
+                    data = await response.text();
+                }
+                
+                const statusClass = response.ok ? 'success' : 'error';
+                resultDiv.className = `result ${statusClass}`;
+                
+                resultDiv.textContent = `✅ ${label}\n\n` +
+                    `URL: ${url}\n` +
+                    `Status: ${response.status} ${response.statusText}\n` +
+                    `Time: ${duration}ms\n` +
+                    `Headers:\n${JSON.stringify(Object.fromEntries(response.headers), null, 2)}\n\n` +
+                    `Response:\n${typeof data === 'string' ? data : JSON.stringify(data, null, 2)}`;
+            } catch (error) {
+                resultDiv.className = 'result error';
+                resultDiv.textContent = `❌ ${label}\n\n` +
+                    `URL: ${url}\n` +
+                    `Error: ${error.message}\n\n` +
+                    `Возможные причины:\n` +
+                    `- Сервер не запущен\n` +
+                    `- Неправильный URL\n` +
+                    `- Проблемы с CORS\n` +
+                    `- Сетевые проблемы`;
+            }
+        }
+        
+        function testRoot() {
+            makeRequest(`${API_BASE}/`, 'Тест корневого пути');
+        }
+        
+        function testDocs() {
+            makeRequest(`${API_BASE}/docs`, 'Тест документации');
+        }
+        
+        function testHealth() {
+            makeRequest(`${API_BASE}/health`, 'Тест health check');
+        }
+        
+        function testAPI() {
+            makeRequest(`${API_BASE}/api/v1`, 'Тест API endpoint');
+        }
+        
+        // Автоматический тест при загрузке
+        window.onload = () => {
+            testRoot();
+        };
+    </script>
+</body>
+</html>
+

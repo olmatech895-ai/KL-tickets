@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useNavigate, Link } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import { Button } from '../components/ui/button'
@@ -22,8 +22,13 @@ export const Login = () => {
   const [registerErrors, setRegisterErrors] = useState({})
   const [touchedFields, setTouchedFields] = useState({})
   const [toasts, setToasts] = useState([])
+  const [isMounted, setIsMounted] = useState(false)
   const { login, register } = useAuth()
   const navigate = useNavigate()
+
+  useEffect(() => {
+    setIsMounted(true)
+  }, [])
 
   const showToast = (title, description, variant = 'default') => {
     const id = Date.now().toString()
@@ -135,13 +140,17 @@ export const Login = () => {
   return (
     <div className="flex items-center justify-center min-h-screen bg-gradient-to-br from-background to-muted px-4">
       <div className="w-full max-w-md">
-        <div className="flex justify-center mb-6 md:mb-8">
+        <div className={`flex justify-center mb-6 md:mb-8 transition-all duration-700 ${
+          isMounted ? 'opacity-100 translate-y-0' : 'opacity-0 -translate-y-4'
+        }`}>
           <div className="flex items-center gap-2 text-2xl sm:text-3xl font-bold">
             <Ticket className="h-6 w-6 sm:h-8 sm:w-8" />
             <span>Тикет-система</span>
           </div>
         </div>
-        <Card>
+        <Card className={`transition-all duration-700 ${
+          isMounted ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4'
+        }`} style={{ transitionDelay: '150ms' }}>
           <CardHeader>
             <CardTitle>Вход в систему</CardTitle>
             <CardDescription>
@@ -151,7 +160,10 @@ export const Login = () => {
           <CardContent>
             <Tabs
               defaultValue="login"
-              className="w-full"
+              className={`w-full transition-all duration-500 ${
+                isMounted ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4'
+              }`}
+              style={{ transitionDelay: '300ms' }}
               onValueChange={(value) => {
                 // Очищаем ошибки и touched поля при переключении вкладок
                 if (value === 'login') {
@@ -167,7 +179,9 @@ export const Login = () => {
               </TabsList>
               <TabsContent value="login">
                 <form onSubmit={handleLogin} className="space-y-4">
-                  <div className="space-y-2">
+                  <div className={`space-y-2 transition-all duration-500 ${
+                    isMounted ? 'opacity-100 translate-x-0' : 'opacity-0 -translate-x-4'
+                  }`} style={{ transitionDelay: '450ms' }}>
                     <Label htmlFor="login-username">Логин</Label>
                     <Input
                       id="login-username"
@@ -178,7 +192,9 @@ export const Login = () => {
                       required
                     />
                   </div>
-                  <div className="space-y-2">
+                  <div className={`space-y-2 transition-all duration-500 ${
+                    isMounted ? 'opacity-100 translate-x-0' : 'opacity-0 -translate-x-4'
+                  }`} style={{ transitionDelay: '600ms' }}>
                     <Label htmlFor="login-password">Пароль</Label>
                     <Input
                       id="login-password"
@@ -190,14 +206,20 @@ export const Login = () => {
                       required
                     />
                   </div>
-                  <Button type="submit" className="w-full">
-                    Войти
-                  </Button>
+                  <div className={`transition-all duration-500 ${
+                    isMounted ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4'
+                  }`} style={{ transitionDelay: '750ms' }}>
+                    <Button type="submit" className="w-full">
+                      Войти
+                    </Button>
+                  </div>
                 </form>
               </TabsContent>
               <TabsContent value="register">
                 <form onSubmit={handleRegister} className="space-y-4">
-                  <div className="space-y-2">
+                  <div className={`space-y-2 transition-all duration-500 ${
+                    isMounted ? 'opacity-100 translate-x-0' : 'opacity-0 -translate-x-4'
+                  }`} style={{ transitionDelay: '450ms' }}>
                     <Label htmlFor="register-username">Логин</Label>
                     <Input
                       id="register-username"
@@ -219,7 +241,9 @@ export const Login = () => {
                       </div>
                     )}
                   </div>
-                  <div className="space-y-2">
+                  <div className={`space-y-2 transition-all duration-500 ${
+                    isMounted ? 'opacity-100 translate-x-0' : 'opacity-0 -translate-x-4'
+                  }`} style={{ transitionDelay: '600ms' }}>
                     <Label htmlFor="register-email">Email</Label>
                     <Input
                       id="register-email"
@@ -248,7 +272,9 @@ export const Login = () => {
                       </p>
                     )}
                   </div>
-                  <div className="space-y-2">
+                  <div className={`space-y-2 transition-all duration-500 ${
+                    isMounted ? 'opacity-100 translate-x-0' : 'opacity-0 -translate-x-4'
+                  }`} style={{ transitionDelay: '750ms' }}>
                     <Label htmlFor="register-password">Пароль</Label>
                     <Input
                       id="register-password"
@@ -276,7 +302,9 @@ export const Login = () => {
                       </p>
                     )}
                   </div>
-                  <div className="space-y-2">
+                  <div className={`space-y-2 transition-all duration-500 ${
+                    isMounted ? 'opacity-100 translate-x-0' : 'opacity-0 -translate-x-4'
+                  }`} style={{ transitionDelay: '900ms' }}>
                     <Label htmlFor="confirm-password">Подтвердите пароль</Label>
                     <Input
                       id="confirm-password"
@@ -299,19 +327,23 @@ export const Login = () => {
                       </div>
                     )}
                   </div>
-                  <Button
-                    type="submit"
-                    className="w-full"
-                    disabled={
-                      Object.keys(registerErrors).length > 0 ||
-                      !registerData.username ||
-                      !registerData.email ||
-                      !registerData.password ||
-                      !registerData.confirmPassword
-                    }
-                  >
-                    Зарегистрироваться
-                  </Button>
+                  <div className={`transition-all duration-500 ${
+                    isMounted ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4'
+                  }`} style={{ transitionDelay: '1050ms' }}>
+                    <Button
+                      type="submit"
+                      className="w-full"
+                      disabled={
+                        Object.keys(registerErrors).length > 0 ||
+                        !registerData.username ||
+                        !registerData.email ||
+                        !registerData.password ||
+                        !registerData.confirmPassword
+                      }
+                    >
+                      Зарегистрироваться
+                    </Button>
+                  </div>
                 </form>
               </TabsContent>
             </Tabs>

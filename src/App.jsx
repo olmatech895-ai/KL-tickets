@@ -13,6 +13,7 @@ import { Admin } from './pages/Admin'
 import { UserDetail } from './pages/UserDetail'
 import { Inventory } from './pages/Inventory'
 import { TodoBoard } from './pages/TodoBoard'
+import { TodoArchive } from './pages/TodoArchive'
 import { Rules } from './pages/Rules'
 import { Help } from './pages/Help'
 import { useAuth } from './context/AuthContext'
@@ -86,9 +87,19 @@ function AppRoutes() {
       <Route
         path="/todos"
         element={
-          <ProtectedRoute allowedRoles={['admin', 'it']}>
+          <ProtectedRoute>
             <Layout>
               <TodoBoard />
+            </Layout>
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/todos/archive"
+        element={
+          <ProtectedRoute>
+            <Layout>
+              <TodoArchive />
             </Layout>
           </ProtectedRoute>
         }

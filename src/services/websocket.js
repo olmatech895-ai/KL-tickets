@@ -9,6 +9,8 @@ class WebSocketService {
     this.token = null
     this.reconnectTimeout = null
     this.pingInterval = null
+    this.suppressErrors = false
+    this.lastConnectionError = null
   }
 
   connect(token) {
@@ -17,6 +19,10 @@ class WebSocketService {
     }
 
     if (this.ws?.readyState === WebSocket.OPEN) {
+      return
+    }
+
+    if (this.reconnectAttempts >= this.maxReconnectAttempts && this.suppressErrors) {
       return
     }
 
@@ -37,12 +43,25 @@ class WebSocketService {
     this.isConnecting = true
 
     try {
-      const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
-      const apiUrl = import.meta.env.VITE_API_BASE_URL || 'https://testdomen.uz/api/v1'
-      const wsHost = apiUrl.replace(/^https?:\/\//, '').replace(/\/api\/v1$/, '')
+      const apiUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000/api/v1'
+      const isHttps = apiUrl.startsWith('https://')
+      const wsProtocol = isHttps ? 'wss:' : 'ws:'
+      let wsHost = apiUrl.replace(/^https?:\/\//, '').replace(/\/api\/v1$/, '').replace(/\/$/, '')
+      if (!wsHost) {
+        wsHost = window.location.host
+      }
       const wsUrl = `${wsProtocol}//${wsHost}/api/v1/ws?token=${encodeURIComponent(token)}`
 
-      this.ws = new WebSocket(wsUrl)
+      try {
+        this.ws = new WebSocket(wsUrl)
+      } catch (error) {
+        this.isConnecting = false
+        this.lastConnectionError = error
+        if (!this.suppressErrors) {
+          this.emit('error', { error, message: 'Failed to create WebSocket connection' })
+        }
+        return
+      }
 
       this.ws.onopen = () => {
         this.isConnecting = false
@@ -62,15 +81,101 @@ class WebSocketService {
       }
 
       this.ws.onerror = (error) => {
-        this.emit('error', { error })
+        this.lastConnectionError = error
+        
+        if (this.suppressErrors) {
+          return
+        }
+        
+        const errorDetails = {
+          error,
+          url: wsUrl,
+          readyState: this.ws?.readyState,
+          timestamp: new Date().toISOString()
+        }
+        
+        let errorMessage = 'WebSocket connection error'
+        
+        if (this.ws?.readyState === WebSocket.CLOSED || this.ws?.readyState === WebSocket.CLOSING) {
+          const closeCode = this.ws?.closeCode || 'unknown'
+          errorMessage = `WebSocket connection failed. Close code: ${closeCode}`
+        } else if (wsUrl.startsWith('wss://')) {
+          errorMessage = 'WebSocket SSL/TLS connection failed. Possible causes: invalid certificate, server not configured for WSS, or proxy issues.'
+        } else {
+          errorMessage = 'WebSocket connection failed. Possible causes: server not running, wrong URL, or network issues.'
+        }
+        
+        errorDetails.message = errorMessage
+        this.emit('error', errorDetails)
       }
 
       this.ws.onclose = (event) => {
         this.isConnecting = false
         this.stopPingInterval()
-        this.emit('disconnected', { code: event.code, reason: event.reason })
+        
+        const closeDetails = {
+          code: event.code,
+          reason: event.reason || 'No reason provided',
+          wasClean: event.wasClean,
+          url: wsUrl,
+          timestamp: new Date().toISOString()
+        }
+        
+        let closeMessage = `WebSocket closed. Code: ${event.code}`
+        
+        switch (event.code) {
+          case 1000:
+            closeMessage = 'WebSocket closed normally'
+            break
+          case 1001:
+            closeMessage = 'WebSocket going away (server shutdown or browser navigation)'
+            break
+          case 1002:
+            closeMessage = 'WebSocket protocol error'
+            break
+          case 1003:
+            closeMessage = 'WebSocket unsupported data type'
+            break
+          case 1006:
+            closeMessage = 'WebSocket abnormal closure (connection lost without close frame). Possible causes: server not running, network issue, or SSL/TLS problem'
+            break
+          case 1008:
+            closeMessage = 'WebSocket closed due to policy violation'
+            break
+          case 1011:
+            closeMessage = 'WebSocket server error'
+            break
+          case 1012:
+            closeMessage = 'WebSocket service restart'
+            break
+          case 1013:
+            closeMessage = 'WebSocket try again later'
+            break
+          case 1014:
+            closeMessage = 'WebSocket bad gateway'
+            break
+          case 1015:
+            closeMessage = 'WebSocket TLS handshake failed'
+            break
+          default:
+            if (event.code >= 4000 && event.code < 5000) {
+              closeMessage = `WebSocket application error: ${event.code}`
+            }
+        }
+        
+        closeDetails.message = closeMessage
+        
+        if (event.code === 1006 && this.reconnectAttempts >= this.maxReconnectAttempts) {
+          this.suppressErrors = true
+        }
+        
+        if (!this.suppressErrors) {
+          this.emit('disconnected', closeDetails)
+        }
         
         if (event.code === 1000 || event.code === 1008) {
+          this.suppressErrors = false
+          this.reconnectAttempts = 0
           return
         }
         
@@ -85,11 +190,17 @@ class WebSocketService {
           }, delay)
           
           this.reconnectTimeout = reconnectTimeout
+        } else if (this.reconnectAttempts >= this.maxReconnectAttempts) {
+          this.suppressErrors = true
         }
       }
     } catch (error) {
       this.isConnecting = false
-      this.emit('error', { error })
+      this.lastConnectionError = error
+      
+      if (!this.suppressErrors) {
+        this.emit('error', { error })
+      }
     }
   }
 
