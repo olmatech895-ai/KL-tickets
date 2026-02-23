@@ -14,7 +14,6 @@ export const AdminLayout = ({ children }) => {
 
   return (
     <div className="min-h-screen bg-background">
-      {/* Minimal top bar with logo and logout */}
       <div className="border-b bg-card">
         <div className="container mx-auto px-4">
           <div className="flex h-16 items-center justify-between">

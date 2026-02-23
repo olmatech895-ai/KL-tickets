@@ -73,7 +73,6 @@ export const Rules = () => {
 
   return (
     <div className="space-y-6 md:space-y-8 px-4 md:px-6 lg:px-8 max-w-7xl mx-auto pt-16 lg:pt-4 sm:pt-6">
-      {/* Header */}
       <div className="relative overflow-hidden rounded-xl bg-gradient-to-r from-blue-500 via-purple-500 to-pink-500 p-4 sm:p-6 md:p-8 text-white shadow-xl pl-12 lg:pl-4 sm:pl-6">
         <div className="relative z-10">
           <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3 mb-2">
@@ -90,7 +89,6 @@ export const Rules = () => {
         <div className="absolute bottom-0 left-0 w-48 h-48 bg-white/10 rounded-full blur-3xl translate-y-1/2 -translate-x-1/2"></div>
       </div>
 
-      {/* Rules Grid */}
       <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
         {rules.map((rule, index) => (
           <Card
@@ -120,7 +118,6 @@ export const Rules = () => {
         ))}
       </div>
 
-      {/* Important Notice */}
       <Card className="border-2 border-yellow-500 bg-yellow-50/50">
         <CardHeader>
           <div className="flex items-center gap-2">

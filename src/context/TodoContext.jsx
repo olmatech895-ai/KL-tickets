@@ -1,6 +1,6 @@
 import { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react'
 import { useAuth } from './AuthContext'
-import { api } from '../config/api'
+import { api, getAuthToken, API_BASE_URL } from '../config/api'
 import { wsService } from '../services/websocket'
 
 const TodoContext = createContext()
@@ -34,30 +34,59 @@ const transformTodoFromAPI = (todo) => {
       checked: item.checked,
       createdAt: item.created_at,
     })),
-    attachments: (todo.attachments || []).map(att => ({
-      id: att.id,
-      filename: att.filename,
-      filePath: att.file_path,
-      fileType: att.file_type,
-      fileSize: att.file_size,
-      isBackground: att.is_background,
-      createdAt: att.created_at,
-    })),
+    attachments: (todo.attachments || []).map(att => {
+      const filePath = att.file_path ?? att.file_path_url
+      const baseUrl = typeof API_BASE_URL === 'string' ? API_BASE_URL.replace(/\/api\/v1\/?$/, '') : ''
+      const resolvedUrl = att.url ?? att.data_url ?? (filePath && (filePath.startsWith('http') ? filePath : baseUrl ? `${baseUrl}${filePath.startsWith('/') ? '' : '/'}${filePath}` : null))
+      return {
+        id: att.id,
+        filename: att.filename ?? att.file_name ?? att.name,
+        name: att.filename ?? att.file_name ?? att.name ?? 'Файл',
+        filePath: filePath ?? null,
+        fileType: att.file_type ?? att.fileType,
+        fileSize: att.file_size ?? att.fileSize,
+        isBackground: !!att.is_background,
+        createdAt: att.created_at,
+        url: resolvedUrl ?? null,
+        dataUrl: att.data_url ?? att.url ?? null,
+      }
+    }),
     storyPoints: todo.story_points,
     inFocus: todo.in_focus || false,
     read: todo.read !== undefined ? todo.read : true,
     project: todo.project || null,
-    dueDate: todo.due_date || null,
+    dueDate: (() => {
+      const d = todo.due_date || null
+      if (!d) return null
+      if (typeof d === 'string' && d.length >= 10) return d.slice(0, 10)
+      return d
+    })(),
+    dueTime: (() => {
+      const d = todo.due_date || null
+      if (!d || typeof d !== 'string' || !d.includes('T')) return null
+      const match = d.match(/T(\d{1,2}):(\d{2})/)
+      return match ? `${match[1].padStart(2, '0')}:${match[2]}` : null
+    })(),
+    allDay: todo.all_day !== undefined ? !!todo.all_day : (() => {
+      const d = todo.due_date || null
+      if (!d || typeof d !== 'string') return true
+      if (!d.includes('T')) return true
+      const match = d.match(/T(\d{1,2}):(\d{2})/)
+      if (!match) return true
+      return match[1] === '00' && match[2] === '00'
+    })(),
     createdBy: todo.created_by,
     createdAt: todo.created_at,
     updatedAt: todo.updated_at,
     backgroundImage: todo.background_image || null,
     isArchived: todo.is_archived || todo.archived || false,
+    notifyWhenDue: !!todo.notify_when_due,
+    calendarOnly: !!todo.calendar_only,
   }
 }
 
 const transformTodoToAPI = (todo) => {
-  return {
+  const data = {
     title: todo.title,
     description: todo.description || null,
     status: todo.status,
@@ -66,9 +95,28 @@ const transformTodoToAPI = (todo) => {
     story_points: todo.storyPoints || null,
     in_focus: todo.inFocus || false,
     project: todo.project || null,
-    due_date: todo.dueDate || null,
+    due_date: (() => {
+      if (!todo.dueDate) return null
+      if (todo.dueTime) return `${todo.dueDate}T${todo.dueTime}:00`
+      return `${todo.dueDate}T00:00:00`
+    })(),
+    all_day: todo.allDay !== undefined ? !!todo.allDay : !todo.dueTime,
+    notify_when_due: !!todo.notifyWhenDue,
+    calendar_only: !!todo.calendarOnly,
     background_image: todo.backgroundImage || null,
   }
+  if (todo.attachments != null) {
+    data.attachments = todo.attachments.map((att) => ({
+      id: att.id,
+      filename: att.filename ?? att.name,
+      file_type: att.fileType ?? att.type,
+      file_size: att.fileSize ?? att.size,
+      is_background: att.isBackground ?? false,
+      data_url: att.url ?? att.dataUrl,
+      file_path: att.filePath,
+    }))
+  }
+  return data
 }
 
 export const TodoProvider = ({ children }) => {
@@ -103,12 +151,12 @@ export const TodoProvider = ({ children }) => {
 
   const setupWebSocket = () => {
     if (!user) {
-      return () => {}
+      return () => { }
     }
 
-    const token = localStorage.getItem('auth_token')
+    const token = getAuthToken()
     if (!token) {
-      return () => {}
+      return () => { }
     }
 
     if (!wsService.isConnected() && !wsService.isConnecting) {
@@ -116,85 +164,77 @@ export const TodoProvider = ({ children }) => {
     }
 
     const unsubscribeTodoCreated = wsService.on('todo_created', (data) => {
-      console.log('[TodoContext] WebSocket: todo_created', data)
       const transformedTodo = transformTodoFromAPI(data.todo)
-      
+
       setTodos(prevTodos => {
         const exists = prevTodos.some(t => t.id === transformedTodo.id)
         if (exists) {
-          console.log('[TodoContext] Todo уже существует, обновляем:', transformedTodo.id)
           return prevTodos.map(t => t.id === transformedTodo.id ? transformedTodo : t)
         }
-        console.log('[TodoContext] Добавляем новый todo:', transformedTodo.id)
         return [...prevTodos, transformedTodo]
       })
     })
 
     const unsubscribeTodoUpdated = wsService.on('todo_updated', (data) => {
-      console.log('[TodoContext] WebSocket: todo_updated', data)
       const transformedTodo = transformTodoFromAPI(data.todo)
-      
+
       setTodos(prevTodos => {
         const exists = prevTodos.some(t => t.id === transformedTodo.id)
         if (exists) {
-          console.log('[TodoContext] Обновляем todo через WebSocket:', transformedTodo.id)
           return prevTodos.map(t => t.id === transformedTodo.id ? transformedTodo : t)
         } else {
-          console.log('[TodoContext] Todo не найден в текущем списке, добавляем:', transformedTodo.id)
           return [...prevTodos, transformedTodo]
         }
       })
     })
 
     const unsubscribeTodoDeleted = wsService.on('todo_deleted', (data) => {
-      setTodos(prevTodos => 
+      setTodos(prevTodos =>
         prevTodos.filter(t => t.id !== data.todo_id)
       )
     })
 
     const unsubscribeTodoCommentAdded = wsService.on('todo_comment_added', (data) => {
       const transformedTodo = transformTodoFromAPI(data.todo)
-      
-      setTodos(prevTodos => 
+
+      setTodos(prevTodos =>
         prevTodos.map(t => t.id === transformedTodo.id ? transformedTodo : t)
       )
     })
 
     const unsubscribeTodoListItemAdded = wsService.on('todo_list_item_added', (data) => {
       const transformedTodo = transformTodoFromAPI(data.todo)
-      
-      setTodos(prevTodos => 
+
+      setTodos(prevTodos =>
         prevTodos.map(t => t.id === transformedTodo.id ? transformedTodo : t)
       )
     })
 
     const unsubscribeTodoListItemUpdated = wsService.on('todo_list_item_updated', (data) => {
       const transformedTodo = transformTodoFromAPI(data.todo)
-      
-      setTodos(prevTodos => 
+
+      setTodos(prevTodos =>
         prevTodos.map(t => t.id === transformedTodo.id ? transformedTodo : t)
       )
     })
 
     const unsubscribeTodoListItemDeleted = wsService.on('todo_list_item_deleted', (data) => {
       const transformedTodo = transformTodoFromAPI(data.todo)
-      
-      setTodos(prevTodos => 
+
+      setTodos(prevTodos =>
         prevTodos.map(t => t.id === transformedTodo.id ? transformedTodo : t)
       )
     })
 
     const unsubscribeTodoArchived = wsService.on('todo_archived', (data) => {
-      console.log('[TodoContext] WebSocket: todo_archived', data)
-      setTodos(prevTodos => 
+      setTodos(prevTodos =>
         prevTodos.filter(t => t.id !== data.todo_id)
       )
     })
 
     const unsubscribeTodoRestored = wsService.on('todo_restored', (data) => {
-      console.log('[TodoContext] WebSocket: todo_restored', data)
       const transformedTodo = transformTodoFromAPI(data.todo)
-      
+
       setTodos(prevTodos => {
         const exists = prevTodos.some(t => t.id === transformedTodo.id)
         if (exists) {
@@ -221,23 +261,13 @@ export const TodoProvider = ({ children }) => {
     if (loading) {
       return
     }
-    
+
     try {
       setLoading(true)
-      console.log('[TodoContext] Загрузка todos...')
       const todosData = await api.getTodos()
-      console.log('[TodoContext] Получены todos из API:', todosData)
       const transformedTodos = todosData.map(transformTodoFromAPI)
-      console.log('[TodoContext] Преобразованные todos:', transformedTodos)
       setTodos(transformedTodos)
     } catch (error) {
-      console.error('[TodoContext] Ошибка загрузки todos:', error)
-      console.error('[TodoContext] Детали ошибки:', {
-        message: error?.message,
-        status: error?.status,
-        detail: error?.detail,
-        stack: error?.stack
-      })
       setTodos([])
     } finally {
       setLoading(false)
@@ -246,45 +276,28 @@ export const TodoProvider = ({ children }) => {
 
   const loadArchivedTodos = useCallback(async () => {
     if (archivedLoadingRef.current) {
-      console.log('[TodoContext] Загрузка уже выполняется, пропускаем')
       return
     }
-    
+
     try {
       archivedLoadingRef.current = true
       setArchivedLoading(true)
-      console.log('[TodoContext] Загрузка архивированных todos...')
       const todosData = await api.getArchivedTodos()
-      console.log('[TodoContext] Получены архивированные todos из API:', todosData)
-      console.log('[TodoContext] Тип данных:', typeof todosData, Array.isArray(todosData))
-      
+
       if (!todosData) {
-        console.warn('[TodoContext] API вернул null или undefined')
         setArchivedTodos([])
         return
       }
-      
+
       if (!Array.isArray(todosData)) {
-        console.error('[TodoContext] API вернул не массив:', todosData)
         setArchivedTodos([])
         return
       }
-      
+
       const transformedTodos = todosData.map(transformTodoFromAPI)
-      console.log('[TodoContext] Преобразованные архивированные todos:', transformedTodos)
-      console.log('[TodoContext] Количество архивированных задач:', transformedTodos.length)
       setArchivedTodos(transformedTodos)
     } catch (error) {
-      console.error('[TodoContext] Ошибка загрузки архивированных todos:', error)
-      console.error('[TodoContext] Детали ошибки:', {
-        message: error?.message,
-        status: error?.status,
-        detail: error?.detail,
-        stack: error?.stack
-      })
-      
       if (error?.status === 404 || error?.isNetworkError) {
-        console.warn('[TodoContext] Эндпоинт /todos/archived недоступен или сервер не запущен. Используем фильтрацию из основного списка.')
         setArchivedTodos([])
       } else {
         setArchivedTodos([])
@@ -298,46 +311,29 @@ export const TodoProvider = ({ children }) => {
   const addTodo = async (todo) => {
     try {
       const apiData = transformTodoToAPI(todo)
-      console.log('[TodoContext] Создание todo:', apiData)
       const createdTodo = await api.createTodo(apiData)
-      console.log('[TodoContext] Todo создан:', createdTodo)
       const transformedTodo = transformTodoFromAPI(createdTodo)
       setTodos([...todos, transformedTodo])
       return transformedTodo
     } catch (error) {
-      console.error('[TodoContext] Ошибка создания todo:', error)
-      console.error('[TodoContext] Детали ошибки:', {
-        message: error?.message,
-        status: error?.status,
-        detail: error?.detail
-      })
       throw error
     }
   }
 
   const addComment = async (todoId, commentText, authorId, authorName) => {
     try {
-      console.log('[TodoContext] Добавление комментария к todo:', { todoId, commentText })
       const updatedTodo = await api.addTodoComment(todoId, { text: commentText })
-      console.log('[TodoContext] Комментарий добавлен, обновленный todo:', updatedTodo)
       const transformedTodo = transformTodoFromAPI(updatedTodo)
       setTodos(todos.map(t => t.id === todoId ? transformedTodo : t))
       const comment = transformedTodo.comments[transformedTodo.comments.length - 1]
       return comment
     } catch (error) {
-      console.error('[TodoContext] Ошибка добавления комментария:', error)
-      console.error('[TodoContext] Детали ошибки:', {
-        message: error?.message,
-        status: error?.status,
-        detail: error?.detail
-      })
-      
       if (error?.status === 403) {
         const forbiddenError = new Error('Вы не можете комментировать эту задачу')
         forbiddenError.status = 403
         throw forbiddenError
       }
-      
+
       throw error
     }
   }
@@ -354,8 +350,17 @@ export const TodoProvider = ({ children }) => {
       if (updates.inFocus !== undefined) apiUpdates.in_focus = updates.inFocus
       if (updates.read !== undefined) apiUpdates.read = updates.read
       if (updates.project !== undefined) apiUpdates.project = updates.project
-      if (updates.dueDate !== undefined) apiUpdates.due_date = updates.dueDate
+      if (updates.dueDate !== undefined || updates.dueTime !== undefined) {
+        const cur = todos.find((t) => t.id === id)
+        const date = updates.dueDate !== undefined ? updates.dueDate : cur?.dueDate
+        const time = updates.dueTime !== undefined ? updates.dueTime : cur?.dueTime
+        apiUpdates.due_date = date ? (time ? `${date}T${time}:00` : `${date}T00:00:00`) : null
+        apiUpdates.all_day = !time
+      }
       if (updates.backgroundImage !== undefined) apiUpdates.background_image = updates.backgroundImage
+      if (updates.notifyWhenDue !== undefined) apiUpdates.notify_when_due = !!updates.notifyWhenDue
+      if (updates.calendarOnly !== undefined) apiUpdates.calendar_only = !!updates.calendarOnly
+      if (updates.allDay !== undefined) apiUpdates.all_day = !!updates.allDay
       if (updates.todoLists !== undefined) {
         apiUpdates.todo_lists = updates.todoLists.map(item => ({
           id: item.id,
@@ -363,62 +368,72 @@ export const TodoProvider = ({ children }) => {
           checked: item.checked || false,
         }))
       }
+      if (updates.attachments !== undefined) {
+        apiUpdates.attachments = updates.attachments.map((att) => ({
+          id: att.id,
+          filename: att.filename ?? att.name,
+          file_type: att.fileType ?? att.type,
+          file_size: att.fileSize ?? att.size,
+          is_background: att.isBackground ?? false,
+          data_url: att.url ?? att.dataUrl,
+          file_path: att.filePath,
+        }))
+      }
 
-      console.log('[TodoContext] Обновление todo:', { id, updates: apiUpdates })
       const updatedTodo = await api.updateTodo(id, apiUpdates)
-      console.log('[TodoContext] Todo обновлен:', updatedTodo)
-      const transformedTodo = transformTodoFromAPI(updatedTodo)
+      let transformedTodo = transformTodoFromAPI(updatedTodo)
+      if (updates.attachments?.length) {
+        const fromApi = transformedTodo.attachments || []
+        const withUrls = fromApi.map((att, i) => {
+          const local = updates.attachments[i]
+          const url = local?.url ?? local?.dataUrl ?? att.url ?? att.dataUrl
+          return url ? { ...att, url, dataUrl: url } : att
+        })
+        const extra = updates.attachments.slice(fromApi.length).map((a) => ({
+          id: a.id,
+          name: a.name ?? a.filename ?? 'Файл',
+          filename: a.filename ?? a.name,
+          fileType: a.fileType ?? a.type,
+          fileSize: a.fileSize ?? a.size,
+          url: a.url ?? a.dataUrl,
+          dataUrl: a.dataUrl ?? a.url,
+          isBackground: a.isBackground ?? false,
+        }))
+        transformedTodo = { ...transformedTodo, attachments: [...withUrls, ...extra] }
+      }
       setTodos(todos.map(t => t.id === id ? transformedTodo : t))
       return transformedTodo
     } catch (error) {
-      console.error('[TodoContext] Ошибка обновления todo:', error)
-      console.error('[TodoContext] Детали ошибки:', {
-        message: error?.message,
-        status: error?.status,
-        detail: error?.detail
-      })
-      
       if (error?.status === 403) {
         const forbiddenError = new Error('Вы не можете редактировать эту задачу')
         forbiddenError.status = 403
         throw forbiddenError
       }
-      
+
       throw error
     }
   }
 
   const archiveTodo = async (id) => {
     try {
-      console.log('[TodoContext] Архивирование todo:', id)
       await api.archiveTodo(id)
-      console.log('[TodoContext] Todo архивирован, удаляем из списка:', id)
       setTodos(todos.filter(t => t.id !== id))
     } catch (error) {
-      console.error('[TodoContext] Ошибка архивирования todo:', error)
-      console.error('[TodoContext] Детали ошибки:', {
-        message: error?.message,
-        status: error?.status,
-        detail: error?.detail
-      })
-      
       if (error?.status === 403) {
         const forbiddenError = new Error('Вы не можете архивировать эту задачу')
         forbiddenError.status = 403
         throw forbiddenError
       }
-      
+
       throw error
     }
   }
 
   const restoreTodo = async (id) => {
     try {
-      console.log('[TodoContext] Восстановление todo из архива:', id)
       await api.restoreTodo(id)
       const updatedTodo = await api.getTodo(id)
       const transformedTodo = transformTodoFromAPI(updatedTodo)
-      console.log('[TodoContext] Todo восстановлен, добавляем в список:', transformedTodo)
       setTodos(prevTodos => {
         const exists = prevTodos.some(t => t.id === id)
         if (exists) {
@@ -428,55 +443,37 @@ export const TodoProvider = ({ children }) => {
       })
       return transformedTodo
     } catch (error) {
-      console.error('[TodoContext] Ошибка восстановления todo:', error)
       throw error
     }
   }
 
   const deleteTodo = async (id) => {
     try {
-      console.log('[TodoContext] Полное удаление todo:', id)
       await api.deleteTodo(id)
-      console.log('[TodoContext] Todo полностью удален:', id)
       setTodos(todos.filter(t => t.id !== id))
     } catch (error) {
-      console.error('[TodoContext] Ошибка удаления todo:', error)
-      console.error('[TodoContext] Детали ошибки:', {
-        message: error?.message,
-        status: error?.status,
-        detail: error?.detail
-      })
-      
       if (error?.status === 403) {
         const forbiddenError = new Error('Вы не можете удалить эту задачу')
         forbiddenError.status = 403
         throw forbiddenError
       }
-      
+
       throw error
     }
   }
 
   const permanentlyDeleteTodo = async (id) => {
     try {
-      console.log('[TodoContext] Полное удаление todo:', id)
       await api.deleteTodo(id)
-      console.log('[TodoContext] Todo полностью удален:', id)
       setTodos(todos.filter(t => t.id !== id))
     } catch (error) {
-      console.error('[TodoContext] Ошибка удаления todo:', error)
-      console.error('[TodoContext] Детали ошибки:', {
-        message: error?.message,
-        status: error?.status,
-        detail: error?.detail
-      })
-      
+
       if (error?.status === 403) {
         const forbiddenError = new Error('Вы не можете удалить эту задачу')
         forbiddenError.status = 403
         throw forbiddenError
       }
-      
+
       throw error
     }
   }
@@ -506,7 +503,7 @@ export const TodoProvider = ({ children }) => {
       if (updates.checked !== undefined) {
         const updatedTodo = await api.updateTodoListItem(todoId, itemId, updates.checked)
         const transformedTodo = transformTodoFromAPI(updatedTodo)
-          setTodos(todos.map(t => t.id === todoId ? transformedTodo : t))
+        setTodos(todos.map(t => t.id === todoId ? transformedTodo : t))
       } else {
         const todo = todos.find(t => t.id === todoId)
         if (todo) {
@@ -531,6 +528,34 @@ export const TodoProvider = ({ children }) => {
     }
   }
 
+  const addTodoAttachment = async (todoId, file, isBackground = false) => {
+    const formData = new FormData()
+    formData.append('file', file)
+    formData.append('is_background', String(!!isBackground))
+    const response = await api.addTodoAttachment(todoId, formData)
+    const isFullTodo = response && (response.status !== undefined || (response.title !== undefined && response.attachments instanceof Array))
+    let transformedTodo
+    if (isFullTodo) {
+      transformedTodo = transformTodoFromAPI(response)
+    } else {
+      const current = todos.find((t) => t.id === todoId)
+      if (!current) return null
+      const newAtt = transformTodoFromAPI({ id: todoId, attachments: [response] }).attachments[0]
+      if (!newAtt) return current
+      const mergedAttachments = [...(current.attachments || []), newAtt]
+      transformedTodo = { ...current, attachments: mergedAttachments }
+    }
+    setTodos(todos.map((t) => (t.id === todoId ? transformedTodo : t)))
+    return transformedTodo
+  }
+
+  const removeTodoAttachment = async (todoId, attachmentId) => {
+    const updatedTodo = await api.deleteTodoAttachment(todoId, attachmentId)
+    const transformedTodo = transformTodoFromAPI(updatedTodo)
+    setTodos(todos.map(t => t.id === todoId ? transformedTodo : t))
+    return transformedTodo
+  }
+
   return (
     <TodoContext.Provider
       value={{
@@ -551,6 +576,8 @@ export const TodoProvider = ({ children }) => {
         addTodoListItem,
         updateTodoListItem,
         deleteTodoListItem,
+        addTodoAttachment,
+        removeTodoAttachment,
       }}
     >
       {children}

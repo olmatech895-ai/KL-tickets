@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useAuth } from '../context/AuthContext'
 import { api, API_BASE_URL } from '../config/api'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../components/ui/card'
@@ -38,6 +38,7 @@ export const Inventory = () => {
   const [loading, setLoading] = useState(false)
   const [toasts, setToasts] = useState([])
   const [isMounted, setIsMounted] = useState(false)
+  const photoPreviewRef = useRef(null)
   const [formData, setFormData] = useState({
     name: '',
     type: '',
@@ -131,6 +132,9 @@ export const Inventory = () => {
       setInventory(inventory.map(item => item.id === updatedItem.id ? updatedItem : item))
       setEditDialogOpen(false)
       setEditingItem(null)
+      if (formData.photoPreview && formData.photoPreview.startsWith('blob:')) {
+        URL.revokeObjectURL(formData.photoPreview)
+      }
       setFormData({
         name: '',
         type: '',
@@ -213,6 +217,9 @@ export const Inventory = () => {
       
       setInventory([newItem, ...inventory])
       setCreateDialogOpen(false)
+      if (formData.photoPreview && formData.photoPreview.startsWith('blob:')) {
+        URL.revokeObjectURL(formData.photoPreview)
+      }
       setFormData({
         name: '',
         type: '',
@@ -248,6 +255,9 @@ export const Inventory = () => {
         return
       }
       
+      if (formData.photoPreview && formData.photoPreview.startsWith('blob:')) {
+        URL.revokeObjectURL(formData.photoPreview)
+      }
       setFormData({
         ...formData,
         photo: file,
@@ -255,6 +265,18 @@ export const Inventory = () => {
       })
     }
   }
+
+  useEffect(() => {
+    photoPreviewRef.current = formData.photoPreview
+  }, [formData.photoPreview])
+
+  useEffect(() => {
+    return () => {
+      if (photoPreviewRef.current && photoPreviewRef.current.startsWith('blob:')) {
+        URL.revokeObjectURL(photoPreviewRef.current)
+      }
+    }
+  }, [])
 
   const getUserName = (userId) => {
     if (!userId) return null
@@ -376,6 +398,7 @@ export const Inventory = () => {
     document.body.appendChild(link)
     link.click()
     document.body.removeChild(link)
+    URL.revokeObjectURL(url)
 
     showToast('Успешно', 'Отчет успешно скачан', 'default')
   }
@@ -916,7 +939,16 @@ export const Inventory = () => {
               <Button
                 type="button"
                 variant="outline"
-                onClick={() => setCreateDialogOpen(false)}
+                onClick={() => {
+                  if (formData.photoPreview && formData.photoPreview.startsWith('blob:')) {
+                    URL.revokeObjectURL(formData.photoPreview)
+                  }
+                  setFormData({
+                    name: '', type: '', serialNumber: '', location: '', status: 'working',
+                    description: '', photo: null, photoPreview: null, responsible: 'none',
+                  })
+                  setCreateDialogOpen(false)
+                }}
                 disabled={loading}
               >
                 Отмена
@@ -1056,6 +1088,9 @@ export const Inventory = () => {
                 type="button"
                 variant="outline"
                 onClick={() => {
+                  if (formData.photoPreview && formData.photoPreview.startsWith('blob:')) {
+                    URL.revokeObjectURL(formData.photoPreview)
+                  }
                   setEditDialogOpen(false)
                   setEditingItem(null)
                   setFormData({

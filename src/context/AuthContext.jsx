@@ -39,13 +39,13 @@ export const AuthProvider = ({ children }) => {
     }
   }
 
-  const login = async (username, password) => {
+  const login = async (email) => {
     try {
-      const response = await api.login({ username, password })
+      const response = await api.login({ email })
       await loadCurrentUser()
       return { success: true }
     } catch (error) {
-      return { success: false, error: error.message || 'Неверный логин или пароль' }
+      return { success: false, error: error.message || 'Неверный email или пользователь не найден' }
     }
   }
 
@@ -75,13 +75,13 @@ export const AuthProvider = ({ children }) => {
       const updatedUser = await api.updateUser(userId, {
         blocked: !currentUser.blocked,
       })
-      
+
       await loadUsers()
-      
+
       if (user?.id === userId && !currentUser.blocked) {
         logout()
       }
-      
+
       return updatedUser
     } catch (error) {
       throw error
@@ -91,9 +91,9 @@ export const AuthProvider = ({ children }) => {
   const deleteUser = async (userId) => {
     try {
       await api.deleteUser(userId)
-      
+
       await loadUsers()
-      
+
       if (user?.id === userId) {
         logout()
       }
@@ -118,13 +118,13 @@ export const AuthProvider = ({ children }) => {
       const updatedUser = await api.updateUser(userId, {
         role: newRole,
       })
-      
+
       await loadUsers()
-      
+
       if (user?.id === userId) {
         await loadCurrentUser()
       }
-      
+
       return updatedUser
     } catch (error) {
       throw error
@@ -138,7 +138,6 @@ export const AuthProvider = ({ children }) => {
   const value = {
     user,
     login,
-    register,
     logout,
     loading,
     isAdmin: user?.role === 'admin',

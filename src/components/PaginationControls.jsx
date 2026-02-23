@@ -21,7 +21,6 @@ export const PaginationControls = ({
     const maxVisible = 5
 
     if (totalPages <= maxVisible) {
-      // Показываем все страницы
       for (let i = 1; i <= totalPages; i++) {
         pages.push(i)
       }
@@ -33,7 +32,6 @@ export const PaginationControls = ({
         pages.push('ellipsis-start')
       }
 
-      // Показываем страницы вокруг текущей
       const start = Math.max(2, currentPage - 1)
       const end = Math.min(totalPages - 1, currentPage + 1)
 
@@ -45,7 +43,6 @@ export const PaginationControls = ({
         pages.push('ellipsis-end')
       }
 
-      // Показываем последнюю страницу
       pages.push(totalPages)
     }
 

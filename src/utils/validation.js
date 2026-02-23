@@ -1,9 +1,26 @@
-/** Утилиты для валидации данных */
 
 /**
- * Валидация логина
- * @param {string} username - Логин для проверки
- * @returns {{isValid: boolean, error: string}} - Результат валидации
+ * @param {string} value 
+ * @param {number} minя
+ * @param {number} max 
+ * @param {string} fieldName 
+ * @returns {{isValid: boolean, error: string}}
+ */
+export const validateLength = (value, min = 0, max = 1000, fieldName = 'Поле') => {
+  if (value == null) value = ''
+  const str = String(value).trim()
+  if (min > 0 && str.length < min) {
+    return { isValid: false, error: `${fieldName} должно содержать минимум ${min} символов` }
+  }
+  if (max > 0 && str.length > max) {
+    return { isValid: false, error: `${fieldName} не должно превышать ${max} символов` }
+  }
+  return { isValid: true, error: '' }
+}
+
+/**
+ * @param {string} username
+ * @returns {{isValid: boolean, error: string}} -
  */
 export const validateUsername = (username) => {
   if (!username || username.trim().length === 0) {
@@ -28,23 +45,20 @@ export const validateUsername = (username) => {
 }
 
 /**
- * Валидация email
- * @param {string} email - Email для проверки
- * @param {string} requiredDomain - Обязательный домен (по умолчанию @kostalegal.com)
- * @returns {{isValid: boolean, error: string}} - Результат валидации
+ * @param {string} email 
+ * @param {string} requiredDomain 
+ * @returns {{isValid: boolean, error: string}}
  */
 export const validateEmail = (email, requiredDomain = '@kostalegal.com') => {
   if (!email || email.trim().length === 0) {
     return { isValid: false, error: 'Email обязателен для заполнения' }
   }
 
-  // Базовая проверка формата email
   const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
   if (!emailRegex.test(email)) {
     return { isValid: false, error: 'Неверный формат email' }
   }
 
-  // Проверка домена
   if (!email.toLowerCase().endsWith(requiredDomain.toLowerCase())) {
     return { isValid: false, error: `Email должен быть с доменом ${requiredDomain}` }
   }
@@ -53,9 +67,8 @@ export const validateEmail = (email, requiredDomain = '@kostalegal.com') => {
 }
 
 /**
- * Валидация пароля
- * @param {string} password - Пароль для проверки
- * @returns {{isValid: boolean, error: string}} - Результат валидации
+ * @param {string} password 
+ * @returns {{isValid: boolean, error: string}} 
  */
 export const validatePassword = (password) => {
   if (!password || password.length === 0) {
@@ -70,7 +83,6 @@ export const validatePassword = (password) => {
     return { isValid: false, error: 'Пароль не должен превышать 100 символов' }
   }
 
-  // Пароль должен содержать хотя бы одну букву и одну цифру
   const hasLetter = /[a-zA-Zа-яА-ЯёЁ]/.test(password)
   const hasNumber = /[0-9]/.test(password)
 
@@ -86,10 +98,9 @@ export const validatePassword = (password) => {
 }
 
 /**
- * Валидация подтверждения пароля
- * @param {string} password - Пароль
- * @param {string} confirmPassword - Подтверждение пароля
- * @returns {{isValid: boolean, error: string}} - Результат валидации
+ * @param {string} password 
+ * @param {string} confirmPassword 
+ * @returns {{isValid: boolean, error: string}}
  */
 export const validateConfirmPassword = (password, confirmPassword) => {
   if (!confirmPassword || confirmPassword.length === 0) {
@@ -104,32 +115,27 @@ export const validateConfirmPassword = (password, confirmPassword) => {
 }
 
 /**
- * Валидация всех полей регистрации
- * @param {Object} data - Данные регистрации
- * @returns {{isValid: boolean, errors: Object}} - Результат валидации
+ * @param {Object} data 
+ * @returns {{isValid: boolean, errors: Object}}
  */
 export const validateRegistration = (data) => {
   const errors = {}
 
-  // Валидация логина
   const usernameValidation = validateUsername(data.username)
   if (!usernameValidation.isValid) {
     errors.username = usernameValidation.error
   }
 
-  // Валидация email
   const emailValidation = validateEmail(data.email)
   if (!emailValidation.isValid) {
     errors.email = emailValidation.error
   }
 
-  // Валидация пароля
   const passwordValidation = validatePassword(data.password)
   if (!passwordValidation.isValid) {
     errors.password = passwordValidation.error
   }
 
-  // Валидация подтверждения пароля
   const confirmPasswordValidation = validateConfirmPassword(data.password, data.confirmPassword)
   if (!confirmPasswordValidation.isValid) {
     errors.confirmPassword = confirmPasswordValidation.error

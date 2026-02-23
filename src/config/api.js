@@ -1,24 +1,20 @@
-export const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000/api/v1'
+import { getStoredToken, setStoredToken, removeStoredToken } from '../lib/auth-storage'
 
-export const getAuthToken = () => {
-  return localStorage.getItem('auth_token')
-}
+export const API_BASE_URL = import.meta.env.VITE_API_BASE_URL
 
-export const setAuthToken = (token) => {
-  if (token) {
-    localStorage.setItem('auth_token', token)
-  } else {
-    localStorage.removeItem('auth_token')
-  }
-}
+export const getAuthToken = () => getStoredToken()
 
-export const removeAuthToken = () => {
-  localStorage.removeItem('auth_token')
-}
+export const setAuthToken = (token) => setStoredToken(token)
+
+export const removeAuthToken = () => removeStoredToken()
+
+const REQUEST_TIMEOUT_MS = 30000
 
 export const apiRequest = async (endpoint, options = {}) => {
   const token = getAuthToken()
-  
+  const controller = options.signal ? null : new AbortController()
+  const timeoutId = controller ? setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS) : null
+
   const headers = {
     'Content-Type': 'application/json',
     ...options.headers,
@@ -31,13 +27,16 @@ export const apiRequest = async (endpoint, options = {}) => {
   const config = {
     ...options,
     headers,
+    signal: options.signal || (controller ? controller.signal : undefined),
   }
 
   try {
     const response = await fetch(`${API_BASE_URL}${endpoint}`, config)
-    
+    if (timeoutId) clearTimeout(timeoutId)
+
     if (response.status === 401) {
       removeAuthToken()
+      window.location.href = '/login'
       const error = new Error('Unauthorized')
       error.status = 401
       throw error
@@ -45,7 +44,7 @@ export const apiRequest = async (endpoint, options = {}) => {
 
     const contentType = response.headers.get('content-type')
     let data = {}
-    
+
     if (response.status === 204) {
       if (!response.ok) {
         try {
@@ -62,7 +61,7 @@ export const apiRequest = async (endpoint, options = {}) => {
       }
       return null
     }
-    
+
     if (contentType && contentType.includes('application/json')) {
       try {
         const text = await response.text()
@@ -84,21 +83,27 @@ export const apiRequest = async (endpoint, options = {}) => {
 
     return data
   } catch (error) {
+    if (timeoutId) clearTimeout(timeoutId)
+    if (error.name === 'AbortError') {
+      const timeoutErr = new Error('Превышено время ожидания ответа сервера')
+      timeoutErr.status = 408
+      throw timeoutErr
+    }
     if (error.message === 'Unauthorized' || error.status === 401) {
       throw error
     }
-    
+
     if (error instanceof TypeError && error.message.includes('fetch')) {
       const networkError = new Error('Ошибка сети. Проверьте подключение к серверу.')
       networkError.status = 0
       networkError.isNetworkError = true
       throw networkError
     }
-    
+
     if (!error.status) {
       error.status = 0
     }
-    
+
     throw error
   }
 }
@@ -176,6 +181,22 @@ export const api = {
     })
   },
 
+  /** Посещаемость: приход/уход сотрудников. Ожидает массив { user_id, full_name?, username?, check_in, check_out? } */
+  getAttendance: async (params = {}) => {
+    const q = new URLSearchParams(params).toString()
+    return apiRequest(`/attendance${q ? `?${q}` : ''}`, { method: 'GET' })
+  },
+
+  /** Состояние камер: массив { id, name?, status: 'online'|'offline'|'unknown' }. При 404/ошибке вернуть пустой массив. */
+  getCameraStatus: async () => {
+    try {
+      const data = await apiRequest('/cameras/status', { method: 'GET' })
+      return Array.isArray(data) ? data : (data?.cameras ?? [])
+    } catch {
+      return []
+    }
+  },
+
   getTickets: async () => {
     return apiRequest('/tickets/', {
       method: 'GET',
@@ -240,12 +261,12 @@ export const api = {
       headers,
       body: formData,
     })
-    
+
     if (response.status === 401) {
       removeAuthToken()
       throw new Error('Unauthorized')
     }
-    
+
     const data = await response.json()
     if (!response.ok) {
       throw new Error(data.detail || data.message || 'Request failed')
@@ -264,12 +285,12 @@ export const api = {
       headers,
       body: formData,
     })
-    
+
     if (response.status === 401) {
       removeAuthToken()
       throw new Error('Unauthorized')
     }
-    
+
     const data = await response.json()
     if (!response.ok) {
       throw new Error(data.detail || data.message || 'Request failed')
@@ -283,8 +304,9 @@ export const api = {
     })
   },
 
-  getTodos: async () => {
-    return apiRequest('/todos')
+  getTodos: async (params = {}) => {
+    const q = new URLSearchParams(params).toString()
+    return apiRequest(`/todos${q ? `?${q}` : ''}`)
   },
 
   getArchivedTodos: async () => {
@@ -342,6 +364,30 @@ export const api = {
     })
   },
 
+  addTodoAttachment: async (todoId, formData) => {
+    const token = getAuthToken()
+    const headers = {}
+    if (token) headers.Authorization = `Bearer ${token}`
+    const response = await fetch(`${API_BASE_URL}/todos/${todoId}/attachments`, {
+      method: 'POST',
+      headers,
+      body: formData,
+    })
+    if (response.status === 401) {
+      removeAuthToken()
+      throw new Error('Unauthorized')
+    }
+    const data = await response.json()
+    if (!response.ok) throw new Error(data.detail || data.message || 'Request failed')
+    return data
+  },
+
+  deleteTodoAttachment: async (todoId, attachmentId) => {
+    return apiRequest(`/todos/${todoId}/attachments/${attachmentId}`, {
+      method: 'DELETE',
+    })
+  },
+
   addTodoListItem: async (todoId, data) => {
     return apiRequest(`/todos/${todoId}/todo-list-items`, {
       method: 'POST',
@@ -370,6 +416,26 @@ export const api = {
     return apiRequest('/todos/columns', {
       method: 'POST',
       body: JSON.stringify({ columns }),
+    })
+  },
+
+  getKostaDailyMessages: async (params = {}) => {
+    const q = new URLSearchParams(params).toString()
+    return apiRequest(`/chat/messages${q ? `?${q}` : ''}`, { method: 'GET' })
+  },
+
+  sendKostaDailyMessage: async (text, attachments = []) => {
+    return apiRequest('/chat/messages', {
+      method: 'POST',
+      body: JSON.stringify({
+        text: text || '',
+        attachments: attachments.map((a) => ({
+          name: a.name,
+          type: a.type,
+          size: a.size,
+          data_url: a.dataUrl,
+        })),
+      }),
     })
   },
 }

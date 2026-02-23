@@ -165,25 +165,22 @@ export const Home = () => {
     setDialogOpen(false)
   }
 
+  const TELEGRAM_BOT_URL = 'https://t.me/klnotification_bot'
+
   const handleConnectTelegram = async () => {
     try {
       setIsTelegramLoading(true)
-      const data = await api.getTelegramLink()
-      const url = data?.url || data?.link || data?.telegram_link
-
-      if (!url) {
-        showToast(
-          'Ошибка',
-          'Сервер не вернул ссылку для подключения Telegram.',
-          'destructive'
-        )
-        return
+      let url = TELEGRAM_BOT_URL
+      try {
+        const data = await api.getTelegramLink()
+        url = data?.url || data?.link || data?.telegram_link || url
+      } catch {
+        // используем переход к боту по умолчанию
       }
-
       window.open(url, '_blank', 'noopener,noreferrer')
     } catch (error) {
       const message =
-        error?.message || 'Не удалось получить ссылку для подключения Telegram.'
+        error?.message || 'Не удалось открыть Telegram.'
       showToast('Ошибка', message, 'destructive')
     } finally {
       setIsTelegramLoading(false)
@@ -193,7 +190,7 @@ export const Home = () => {
   return (
     <div className="space-y-6 md:space-y-8 px-4 md:px-6 lg:px-8 max-w-7xl mx-auto">
       {/* Header Section */}
-      <div className={`flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4 sm:gap-6 pt-16 lg:pt-4 sm:pt-6 pl-0 lg:pl-0 transition-all duration-700 ${
+      <div className={`flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4 sm:gap-6 pl-0 lg:pl-0 transition-all duration-700 ${
         isMounted ? 'opacity-100 translate-y-0' : 'opacity-0 -translate-y-4'
       }`}>
         <div className="flex-1 min-w-0 space-y-2 pl-12 lg:pl-0">
@@ -284,7 +281,7 @@ export const Home = () => {
             <div>
               <CardTitle className="text-lg">Telegram уведомления</CardTitle>
               <CardDescription>
-                Получайте уведомления о новых и обновленных тикетах в Telegram-боте.
+                Получайте уведомления о новых и обновленных тикетах в боте @klnotification_bot.
               </CardDescription>
             </div>
             <div className="text-sm">

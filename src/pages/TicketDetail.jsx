@@ -13,7 +13,6 @@ import { format } from 'date-fns'
 
 export const TicketDetail = () => {
   const { id } = useParams()
-  const navigate = useNavigate()
   const { user, isAdmin, isIT } = useAuth()
   const { tickets, updateTicket, addComment, assignTicket } = useTickets()
   const [commentText, setCommentText] = useState('')
@@ -25,7 +24,7 @@ export const TicketDetail = () => {
     const found = tickets.find((t) => t.id === id)
     return found
   }, [tickets, id, updateKey])
-  
+
   useEffect(() => {
     if (ticket?.comments) {
       setUpdateKey(prev => prev + 1)
@@ -34,18 +33,13 @@ export const TicketDetail = () => {
 
   useEffect(() => {
     if (commentsEndRef.current && ticket?.comments?.length > 0) {
-      setTimeout(() => {
+      const t = setTimeout(() => {
         commentsEndRef.current?.scrollIntoView({ behavior: 'smooth' })
       }, 100)
+      return () => clearTimeout(t)
     }
   }, [ticket?.comments?.length, updateKey])
 
-  useEffect(() => {
-    if (commentsEndRef.current) {
-      commentsEndRef.current.scrollIntoView({ behavior: 'smooth' })
-    }
-  }, [ticket?.comments?.length, updateKey])
-  
   useEffect(() => {
     if (ticket) {
       setEstimatedTime(ticket.estimatedTime || '')
@@ -228,9 +222,7 @@ export const TicketDetail = () => {
       </div>
 
       <div className="grid gap-4 sm:gap-6 lg:grid-cols-3">
-        {/* Main Content - Left Column */}
         <div className="lg:col-span-2 space-y-4 sm:space-y-6">
-          {/* Description Card */}
           <Card>
             <CardHeader className="pb-3">
               <CardTitle className="text-base sm:text-lg">Описание</CardTitle>
@@ -242,7 +234,6 @@ export const TicketDetail = () => {
             </CardContent>
           </Card>
 
-          {/* Comments Card */}
           <Card className="flex flex-col h-[500px] sm:h-[600px] lg:h-[650px]">
             <CardHeader className="flex-shrink-0 pb-3">
               <CardTitle className="flex items-center gap-2 text-lg">
@@ -251,7 +242,6 @@ export const TicketDetail = () => {
               </CardTitle>
             </CardHeader>
             <CardContent className="flex flex-col flex-1 min-h-0 space-y-4">
-              {/* Scrollable comments area */}
               <div className="flex-1 overflow-y-auto pr-2 space-y-4 min-h-0 scrollbar-hide">
                 {(!ticket.comments || ticket.comments.length === 0) ? (
                   <div className="flex items-center justify-center h-full">
@@ -279,13 +269,11 @@ export const TicketDetail = () => {
                         </p>
                       </div>
                     ))}
-                    {/* Invisible element to scroll to */}
                     <div ref={commentsEndRef} />
                   </>
                 )}
               </div>
 
-              {/* Fixed input area at bottom */}
               <div className="flex-shrink-0 pt-4 border-t space-y-3">
                 {canComment ? (
                   <form onSubmit={handleAddComment} className="space-y-3">
@@ -310,14 +298,12 @@ export const TicketDetail = () => {
           </Card>
         </div>
 
-        {/* Sidebar - Right Column */}
         <div className="space-y-4 sm:space-y-6">
           <Card>
             <CardHeader className="pb-3">
               <CardTitle className="text-base sm:text-lg">Информация</CardTitle>
             </CardHeader>
             <CardContent className="space-y-4 sm:space-y-6">
-              {/* Status */}
               <div className="space-y-2">
                 <div className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
                   <Tag className="h-4 w-4" />
@@ -342,7 +328,6 @@ export const TicketDetail = () => {
                 )}
               </div>
 
-              {/* Priority */}
               <div className="space-y-2">
                 <div className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
                   <Tag className="h-4 w-4" />
@@ -351,7 +336,6 @@ export const TicketDetail = () => {
                 <p className="font-medium text-base">{getPriorityText(ticket.priority)}</p>
               </div>
 
-              {/* Category */}
               <div className="space-y-2">
                 <div className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
                   <Tag className="h-4 w-4" />
@@ -360,7 +344,6 @@ export const TicketDetail = () => {
                 <p className="font-medium text-base">{getCategoryText(ticket.category)}</p>
               </div>
 
-              {/* Created By */}
               <div className="space-y-2">
                 <div className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
                   <User className="h-4 w-4" />
@@ -380,7 +363,6 @@ export const TicketDetail = () => {
                 )}
               </div>
 
-              {/* Assigned To */}
               {ticket.assignedToName && (
                 <div className="space-y-2">
                   <div className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
@@ -432,13 +414,12 @@ export const TicketDetail = () => {
                 )}
               </div>
 
-              {/* Action Button */}
               {isIT && !isAdmin && !ticket.assignedTo && ticket.status === 'open' && (
-                <Button 
+                <Button
                   onClick={() => {
                     assignTicket(id, user.id, user.username)
                     handleStatusChange('in_progress')
-                  }} 
+                  }}
                   className="w-full"
                 >
                   Взять на разработку

@@ -15,13 +15,6 @@ import {
   DialogTitle,
 } from '../components/ui/dialog'
 import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-  DropdownMenuSeparator,
-} from '../components/ui/dropdown-menu'
-import {
   ArrowLeft,
   Archive,
   ArchiveRestore,
@@ -29,14 +22,13 @@ import {
   Search,
   Sun,
   Moon,
-  MoreVertical,
   Flag,
 } from 'lucide-react'
 import { cn } from '../lib/utils'
 
 export const TodoArchive = () => {
   const navigate = useNavigate()
-  const { user, getAllUsers } = useAuth()
+  const { _, getAllUsers } = useAuth()
   const { theme, toggleTheme } = useTheme()
   const {
     archivedTodos,
@@ -56,50 +48,29 @@ export const TodoArchive = () => {
 
   useEffect(() => {
     setIsMounted(true)
-    console.log('[TodoArchive] Компонент смонтирован, загружаем архивированные задачи')
     if (loadArchivedTodos) {
       loadArchivedTodos()
-    } else {
-      console.error('[TodoArchive] loadArchivedTodos не определена')
     }
   }, [])
 
-  useEffect(() => {
-    console.log('[TodoArchive] archivedTodos обновлены:', archivedTodos)
-    console.log('[TodoArchive] archivedLoading:', archivedLoading)
-  }, [archivedTodos, archivedLoading])
-
   const filteredTodos = useMemo(() => {
-    console.log('[TodoArchive] Фильтрация todos. archivedTodos:', archivedTodos)
-    console.log('[TodoArchive] Тип archivedTodos:', typeof archivedTodos, Array.isArray(archivedTodos))
-    console.log('[TodoArchive] Длина archivedTodos:', archivedTodos?.length)
-    
     if (!archivedTodos || !Array.isArray(archivedTodos)) {
-      console.log('[TodoArchive] archivedTodos не массив или undefined:', archivedTodos)
       return []
     }
-    
+
     if (archivedTodos.length === 0) {
-      console.log('[TodoArchive] archivedTodos пустой массив')
       return []
     }
-    
-    let result
+
     if (!searchQuery) {
-      result = archivedTodos
-      console.log('[TodoArchive] Без поиска, возвращаем все:', result.length)
-    } else {
-      const query = searchQuery.toLowerCase()
-      result = archivedTodos.filter((todo) => {
-        const matches = todo.title?.toLowerCase().includes(query) ||
-          todo.description?.toLowerCase().includes(query)
-        return matches
-      })
-      console.log('[TodoArchive] С поиском "' + searchQuery + '", найдено:', result.length)
+      return archivedTodos
     }
-    
-    console.log('[TodoArchive] filteredTodos результат:', result)
-    return result
+    const query = searchQuery.toLowerCase()
+    return archivedTodos.filter((todo) => {
+      const matches = todo.title?.toLowerCase().includes(query) ||
+        todo.description?.toLowerCase().includes(query)
+      return matches
+    })
   }, [archivedTodos, searchQuery])
 
   const handleContextMenu = (e, todo) => {
@@ -120,7 +91,6 @@ export const TodoArchive = () => {
       await loadTodos()
       setContextMenu(null)
     } catch (error) {
-      console.error('[TodoArchive] Ошибка восстановления задачи:', error)
       setContextMenu(null)
     }
   }
@@ -150,15 +120,13 @@ export const TodoArchive = () => {
 
   return (
     <div className="h-screen flex flex-col bg-background transition-colors duration-300 overflow-hidden">
-      {/* Top Navigation Bar */}
       <div className={cn(
         "fixed top-0 left-0 right-0 z-50 border-b px-4 py-3 flex items-center justify-between gap-4 flex-shrink-0 backdrop-blur-xl transition-all duration-700 shadow-lg shadow-black/5",
-        theme === 'dark' 
-          ? "bg-gray-900/70 border-gray-800/30 backdrop-blur-xl" 
+        theme === 'dark'
+          ? "bg-gray-900/70 border-gray-800/30 backdrop-blur-xl"
           : "bg-white/70 border-gray-200/30 backdrop-blur-xl",
         isMounted ? 'opacity-100 translate-y-0' : 'opacity-0 -translate-y-4'
       )}>
-        {/* Back Button */}
         <div className="flex items-center gap-4 flex-shrink-0">
           <Button
             variant="ghost"
@@ -179,7 +147,6 @@ export const TodoArchive = () => {
           </div>
         </div>
 
-        {/* Search */}
         <div className="flex items-center gap-3 flex-1 justify-center">
           <div className="relative flex-1 max-w-md">
             <Search className={cn(
@@ -200,7 +167,6 @@ export const TodoArchive = () => {
           </div>
         </div>
 
-        {/* Right Actions */}
         <div className="flex items-center gap-2 flex-shrink-0">
           <Button
             variant="ghost"
@@ -223,10 +189,8 @@ export const TodoArchive = () => {
         </div>
       </div>
 
-      {/* Spacer for fixed navigation */}
       <div className="h-[57px] flex-shrink-0"></div>
 
-      {/* Archive Content */}
       <div className={cn(
         "flex-1 overflow-y-auto p-4 transition-all duration-700",
         theme === 'dark'
@@ -246,7 +210,7 @@ export const TodoArchive = () => {
               {!archivedTodos || archivedTodos.length === 0 ? 'Архив пуст' : 'Ничего не найдено'}
             </p>
             <p className="text-sm text-muted-foreground mt-2">
-              {!archivedTodos || archivedTodos.length === 0 
+              {!archivedTodos || archivedTodos.length === 0
                 ? 'Здесь будут отображаться архивированные задачи'
                 : 'Попробуйте изменить поисковый запрос'}
             </p>
@@ -258,7 +222,7 @@ export const TodoArchive = () => {
             {!archivedLoading && (!archivedTodos || archivedTodos.length === 0) && (
               <div className="mt-4 p-4 bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-md">
                 <p className="text-sm text-yellow-800 dark:text-yellow-200">
-                  <strong>Примечание:</strong> Эндпоинт для архивированных задач может быть недоступен. 
+                  <strong>Примечание:</strong> Эндпоинт для архивированных задач может быть недоступен.
                   Убедитесь, что сервер запущен и эндпоинт <code className="bg-yellow-100 dark:bg-yellow-900 px-1 rounded">/api/v1/todos/archived</code> существует.
                 </p>
               </div>
@@ -266,10 +230,7 @@ export const TodoArchive = () => {
           </div>
         ) : filteredTodos && filteredTodos.length > 0 ? (
           <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-            {console.log('[TodoArchive] Рендерим карточки, количество:', filteredTodos.length)}
-            {filteredTodos.map((todo, index) => {
-              console.log('[TodoArchive] Рендерим карточку:', todo.id, todo.title)
-              return (
+            {filteredTodos.map((todo, index) => (
               <Card
                 key={todo.id}
                 onContextMenu={(e) => handleContextMenu(e, todo)}
@@ -296,8 +257,8 @@ export const TodoArchive = () => {
                     <div className="flex items-start justify-between gap-2">
                       <h4 className={cn(
                         "font-medium text-sm leading-tight transition-colors flex-1",
-                        todo.backgroundImage 
-                          ? "text-white drop-shadow-md" 
+                        todo.backgroundImage
+                          ? "text-white drop-shadow-md"
                           : theme === 'dark' ? "text-gray-100" : "text-gray-900"
                       )}>
                         {todo.title}
@@ -315,8 +276,8 @@ export const TodoArchive = () => {
                     {todo.description && (
                       <p className={cn(
                         "text-xs line-clamp-2 transition-colors",
-                        todo.backgroundImage 
-                          ? "text-white/90 drop-shadow-md" 
+                        todo.backgroundImage
+                          ? "text-white/90 drop-shadow-md"
                           : theme === 'dark' ? "text-gray-300" : "text-gray-600"
                       )}>
                         {todo.description}
@@ -331,13 +292,11 @@ export const TodoArchive = () => {
                   </div>
                 </CardContent>
               </Card>
-              )
-            })}
+            ))}
           </div>
         ) : null}
       </div>
 
-      {/* Context Menu */}
       {contextMenu && (
         <>
           <div
@@ -347,8 +306,8 @@ export const TodoArchive = () => {
           <div
             className={cn(
               "fixed z-[100] rounded-lg shadow-lg py-1 min-w-[180px]",
-              theme === 'dark' 
-                ? "bg-gray-800 border border-gray-700" 
+              theme === 'dark'
+                ? "bg-gray-800 border border-gray-700"
                 : "bg-white border border-gray-200"
             )}
             style={{
@@ -360,8 +319,8 @@ export const TodoArchive = () => {
               onClick={() => handleRestoreTodo(contextMenu.todo)}
               className={cn(
                 "w-full flex items-center px-3 py-2 text-sm transition-colors",
-                theme === 'dark' 
-                  ? "hover:bg-gray-700 text-gray-100" 
+                theme === 'dark'
+                  ? "hover:bg-gray-700 text-gray-100"
                   : "hover:bg-gray-100 text-gray-900"
               )}
             >
@@ -380,8 +339,8 @@ export const TodoArchive = () => {
               }}
               className={cn(
                 "w-full flex items-center px-3 py-2 text-sm transition-colors text-destructive",
-                theme === 'dark' 
-                  ? "hover:bg-gray-700" 
+                theme === 'dark'
+                  ? "hover:bg-gray-700"
                   : "hover:bg-gray-100"
               )}
             >
@@ -392,7 +351,6 @@ export const TodoArchive = () => {
         </>
       )}
 
-      {/* Delete Todo Confirmation Dialog */}
       <Dialog open={deleteTodoDialogOpen} onOpenChange={setDeleteTodoDialogOpen}>
         <DialogContent className="sm:max-w-[425px]">
           <DialogHeader>
@@ -423,7 +381,6 @@ export const TodoArchive = () => {
                     setDeleteTodoDialogOpen(false)
                     setTodoToDelete(null)
                   } catch (error) {
-                    console.error('[TodoArchive] Ошибка удаления задачи:', error)
                     setDeleteTodoDialogOpen(false)
                     setTodoToDelete(null)
                   }

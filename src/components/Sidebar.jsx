@@ -21,9 +21,13 @@ import {
   Sun,
   Moon,
   Plus,
+  MessageCircle,
+  Clock,
+  Timer,
 } from 'lucide-react'
 import { cn } from '../lib/utils'
 import { useTheme } from '../context/ThemeContext'
+import { showKostaDaily } from '../config/feature-flags'
 
 export const Sidebar = ({ mobileMenuOpen, setMobileMenuOpen }) => {
   const { user, logout, isAdmin, isIT } = useAuth()
@@ -56,7 +60,14 @@ export const Sidebar = ({ mobileMenuOpen, setMobileMenuOpen }) => {
       label: 'Админ-панель',
       icon: Settings,
       path: '/admin',
-      visible: isAdmin,
+      visible: isAdmin || isIT,
+    },
+    {
+      id: 'attendance',
+      label: 'Посещаемость',
+      icon: Clock,
+      path: '/attendance',
+      visible: isAdmin || isIT,
     },
     {
       id: 'inventory',
@@ -66,11 +77,25 @@ export const Sidebar = ({ mobileMenuOpen, setMobileMenuOpen }) => {
       visible: isAdmin || isIT,
     },
     {
+      id: 'time-tracking',
+      label: 'Учёт времени',
+      icon: Timer,
+      path: '/time-tracking',
+      visible: true,
+    },
+    {
       id: 'todos',
       label: 'Список дел',
       icon: CheckSquare,
       path: '/todos',
       visible: true,
+    },
+    {
+      id: 'kosta-daily',
+      label: 'Kosta Daily',
+      icon: MessageCircle,
+      path: '/kosta-daily',
+      visible: showKostaDaily,
     },
     {
       id: 'tickets',
@@ -84,21 +109,21 @@ export const Sidebar = ({ mobileMenuOpen, setMobileMenuOpen }) => {
       label: 'Правила',
       icon: FileText,
       path: '/rules',
-      visible: !isIT && !isAdmin, // Скрыть для IT отдела и админа
+      visible: !isIT && !isAdmin,
     },
     {
       id: 'help',
       label: 'Подсказки',
       icon: HelpCircle,
       path: '/help',
-      visible: !isIT && !isAdmin, // Скрыть для IT отдела и админа
+      visible: !isIT && !isAdmin,
     },
   ].filter((item) => item.visible)
 
   const SidebarContent = ({ onLinkClick }) => (
     <div className="flex flex-col h-screen">
-      {/* Logo */}
-      <div className="p-4 lg:p-6 border-b flex-shrink-0">
+
+      <div className="p-4 lg:p-6 border-b flex-shrink-0 min-h-[4.5rem] flex items-center">
         <Link
           to="/"
           onClick={onLinkClick}
@@ -109,7 +134,6 @@ export const Sidebar = ({ mobileMenuOpen, setMobileMenuOpen }) => {
         </Link>
       </div>
 
-      {/* User Info */}
       <div className="p-4 lg:p-6 border-b flex-shrink-0">
         <div className="flex items-center gap-3">
           <div className="h-10 w-10 rounded-full bg-primary/10 flex items-center justify-center flex-shrink-0">
@@ -125,16 +149,15 @@ export const Sidebar = ({ mobileMenuOpen, setMobileMenuOpen }) => {
               {user?.role === 'admin'
                 ? 'Администратор'
                 : user?.role === 'it'
-                ? 'IT Отдел'
-                : 'Пользователь'}
+                  ? 'IT Отдел'
+                  : 'Пользователь'}
             </p>
           </div>
         </div>
       </div>
 
-      {/* Navigation */}
-      <nav className="flex-1 p-4 lg:p-6 overflow-y-auto min-h-0 scrollbar-hide">
-        <div className="space-y-1">
+      <nav className="flex-1 py-4 lg:py-6 overflow-y-auto min-h-0 scrollbar-hide px-0">
+        <div className="space-y-1 w-full">
           {menuItems.map((item) => {
             const Icon = item.icon
             const active = isActive(item.path)
@@ -145,13 +168,13 @@ export const Sidebar = ({ mobileMenuOpen, setMobileMenuOpen }) => {
                 variant={active ? 'default' : 'ghost'}
                 asChild
                 className={cn(
-                  'w-full justify-start',
+                  'w-full justify-start rounded-none h-auto py-2.5 px-4 lg:px-6',
                   active && 'bg-primary text-primary-foreground'
                 )}
                 onClick={onLinkClick}
               >
-                <Link to={item.path}>
-                  <Icon className="h-4 w-4 mr-3" />
+                <Link to={item.path} className="w-full">
+                  <Icon className="h-4 w-4 mr-3 flex-shrink-0" />
                   <span>{item.label}</span>
                 </Link>
               </Button>
@@ -160,7 +183,6 @@ export const Sidebar = ({ mobileMenuOpen, setMobileMenuOpen }) => {
         </div>
       </nav>
 
-      {/* Theme Toggle and Logout */}
       <div className="p-4 lg:p-6 border-t flex-shrink-0 space-y-2">
         <Button
           variant="outline"
@@ -186,10 +208,8 @@ export const Sidebar = ({ mobileMenuOpen, setMobileMenuOpen }) => {
       </div>
     </div>
   )
-
   return (
     <>
-      {/* Desktop Sidebar */}
       <aside className="hidden lg:flex lg:flex-col lg:w-64 lg:flex-shrink-0 border-r bg-card fixed left-0 top-0 h-screen">
         <SidebarContent />
       </aside>

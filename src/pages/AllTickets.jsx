@@ -1,7 +1,7 @@
 import { Link } from 'react-router-dom'
 import { useTickets } from '../context/TicketsContext'
 import { useAuth } from '../context/AuthContext'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../components/ui/card'
+import { Card, CardContent } from '../components/ui/card'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select'
 import { PaginationControls } from '../components/PaginationControls'
 import { ToastContainer } from '../components/ui/toast'
@@ -19,7 +19,6 @@ export const AllTickets = () => {
   const [isMounted, setIsMounted] = useState(false)
   const itemsPerPage = 10
 
-  // Получаем тикеты с учетом роли пользователя
   const userTickets = getTicketsForUser()
 
   const filteredTickets = useMemo(() => {
@@ -29,14 +28,13 @@ export const AllTickets = () => {
   }, [userTickets, statusFilter])
 
   const totalPages = Math.ceil(filteredTickets.length / itemsPerPage)
-  
+
   const paginatedTickets = useMemo(() => {
     const startIndex = (currentPage - 1) * itemsPerPage
     const endIndex = startIndex + itemsPerPage
     return filteredTickets.slice(startIndex, endIndex)
   }, [filteredTickets, currentPage, itemsPerPage])
 
-  // Сбрасываем на первую страницу при изменении фильтра
   useEffect(() => {
     setCurrentPage(1)
   }, [statusFilter])
@@ -57,8 +55,7 @@ export const AllTickets = () => {
     if ((isIT || isAdmin) && setNotificationHandler) {
       setNotificationHandler(showToast)
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isIT, isAdmin]) // setNotificationHandler is stable, no need to include it
+  }, [isIT, isAdmin])
 
   const getStatusIcon = (status) => {
     switch (status) {
@@ -132,12 +129,12 @@ export const AllTickets = () => {
             <SelectTrigger className="w-full sm:w-[180px]">
               <SelectValue placeholder="Фильтр по статусу" />
             </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">Все статусы</SelectItem>
-                <SelectItem value="open">Открыт</SelectItem>
-                <SelectItem value="in_progress">В работе</SelectItem>
-                <SelectItem value="closed">Закрыт</SelectItem>
-              </SelectContent>
+            <SelectContent>
+              <SelectItem value="all">Все статусы</SelectItem>
+              <SelectItem value="open">Открыт</SelectItem>
+              <SelectItem value="in_progress">В работе</SelectItem>
+              <SelectItem value="closed">Закрыт</SelectItem>
+            </SelectContent>
           </Select>
         </div>
       </div>
@@ -162,68 +159,67 @@ export const AllTickets = () => {
         <>
           <div className="space-y-3 sm:space-y-4">
             {paginatedTickets.map((ticket, index) => (
-            <Link
-              key={ticket.id}
-              to={`/ticket/${ticket.id}`}
-              className="block"
-            >
-              <Card className={cn(
-                "hover:bg-accent/50 hover:shadow-md transition-all border-2 duration-700",
-                isMounted ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4'
-              )} style={{ transitionDelay: `${200 + index * 50}ms` }}>
-                <CardContent className="p-4 sm:p-6">
-                  <div className="flex flex-col sm:flex-row items-start justify-between gap-3">
-                    <div className="flex-1 min-w-0 w-full">
-                      <div className="flex flex-wrap items-center gap-2 mb-2">
-                        {getStatusIcon(ticket.status)}
-                        <h3 className="font-semibold text-base sm:text-lg break-words flex-1 min-w-0">{ticket.title}</h3>
-                        <span
-                          className={`px-2.5 py-1 text-xs font-medium rounded-full whitespace-nowrap ${getPriorityColor(
-                            ticket.priority
-                          )}`}
-                        >
-                          {getPriorityText(ticket.priority)}
-                        </span>
-                      </div>
-                      <p className="text-sm text-muted-foreground line-clamp-2 mb-3">
-                        {ticket.description}
-                      </p>
-                      <div className="flex flex-col gap-2 text-xs sm:text-sm text-muted-foreground">
-                        <div className="flex flex-wrap items-center gap-2 sm:gap-4">
-                          <span className="flex items-center gap-1">
-                            <span className="font-medium">Статус:</span>
-                            {getStatusText(ticket.status)}
-                          </span>
-                          <span className="flex items-center gap-1">
-                            <span className="font-medium">Создан:</span>
-                            {format(new Date(ticket.createdAt), 'dd MMM yyyy')}
+              <Link
+                key={ticket.id}
+                to={`/ticket/${ticket.id}`}
+                className="block"
+              >
+                <Card className={cn(
+                  "hover:bg-accent/50 hover:shadow-md transition-all border-2 duration-700",
+                  isMounted ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4'
+                )} style={{ transitionDelay: `${200 + index * 50}ms` }}>
+                  <CardContent className="p-4 sm:p-6">
+                    <div className="flex flex-col sm:flex-row items-start justify-between gap-3">
+                      <div className="flex-1 min-w-0 w-full">
+                        <div className="flex flex-wrap items-center gap-2 mb-2">
+                          {getStatusIcon(ticket.status)}
+                          <h3 className="font-semibold text-base sm:text-lg break-words flex-1 min-w-0">{ticket.title}</h3>
+                          <span
+                            className={`px-2.5 py-1 text-xs font-medium rounded-full whitespace-nowrap ${getPriorityColor(
+                              ticket.priority
+                            )}`}
+                          >
+                            {getPriorityText(ticket.priority)}
                           </span>
                         </div>
-                        <div className="flex flex-wrap items-center gap-2 sm:gap-4">
-                          <span className="flex items-center gap-1">
-                            <span className="font-medium">Автор:</span>
-                            {ticket.createdByName}
-                          </span>
-                          {ticket.assignedToName && (
+                        <p className="text-sm text-muted-foreground line-clamp-2 mb-3">
+                          {ticket.description}
+                        </p>
+                        <div className="flex flex-col gap-2 text-xs sm:text-sm text-muted-foreground">
+                          <div className="flex flex-wrap items-center gap-2 sm:gap-4">
                             <span className="flex items-center gap-1">
-                              <span className="font-medium">Назначен:</span>
-                              {ticket.assignedToName}
+                              <span className="font-medium">Статус:</span>
+                              {getStatusText(ticket.status)}
                             </span>
-                          )}
-                          <span className="flex items-center gap-1">
-                            <span className="font-medium">Комментариев:</span>
-                            {ticket.comments.length}
-                          </span>
+                            <span className="flex items-center gap-1">
+                              <span className="font-medium">Создан:</span>
+                              {format(new Date(ticket.createdAt), 'dd MMM yyyy')}
+                            </span>
+                          </div>
+                          <div className="flex flex-wrap items-center gap-2 sm:gap-4">
+                            <span className="flex items-center gap-1">
+                              <span className="font-medium">Автор:</span>
+                              {ticket.createdByName}
+                            </span>
+                            {ticket.assignedToName && (
+                              <span className="flex items-center gap-1">
+                                <span className="font-medium">Назначен:</span>
+                                {ticket.assignedToName}
+                              </span>
+                            )}
+                            <span className="flex items-center gap-1">
+                              <span className="font-medium">Комментариев:</span>
+                              {ticket.comments.length}
+                            </span>
+                          </div>
                         </div>
                       </div>
                     </div>
-                  </div>
-                </CardContent>
-              </Card>
-            </Link>
-          ))}
+                  </CardContent>
+                </Card>
+              </Link>
+            ))}
           </div>
-          
           {totalPages > 1 && (
             <div className={cn(
               "mt-6 transition-all duration-700",

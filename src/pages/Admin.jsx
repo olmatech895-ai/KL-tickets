@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from 'react'
-import { useNavigate, Link } from 'react-router-dom'
+import { useNavigate, Link, useSearchParams } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import { useTickets } from '../context/TicketsContext'
 import { PaginationControls } from '../components/PaginationControls'
@@ -27,10 +27,24 @@ import {
   Shield,
   UserCheck as UserCheckIcon,
   LayoutDashboard,
+  Clock,
 } from 'lucide-react'
-import { format } from 'date-fns'
+import { format, parseISO, differenceInMinutes, differenceInHours } from 'date-fns'
+import { ru } from 'date-fns/locale'
 import { cn } from '../lib/utils'
+import { attendanceApi } from '../config/attendance-api'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select'
+
+function normalizeAttendanceRow(row) {
+  return {
+    ...row,
+    id: row.id ?? row.user_id ?? row.userId,
+    user_id: row.user_id ?? row.userId ?? row.id,
+    full_name: row.full_name ?? row.fullName ?? row.username,
+    check_in: row.check_in ?? row.checkIn ?? row.entrance,
+    check_out: row.check_out ?? row.checkOut ?? row.exit,
+  }
+}
 
 const formatDate = (dateString) => {
   if (!dateString) return 'Не указано'
@@ -43,10 +57,15 @@ const formatDate = (dateString) => {
   }
 }
 
+const ADMIN_TABS = ['users', 'tickets', 'attendance']
+
 export const Admin = () => {
   const { user, toggleUserBlock, deleteUser, loadUsers, updateUserRole } = useAuth()
   const { tickets } = useTickets()
   const navigate = useNavigate()
+  const [searchParams, setSearchParams] = useSearchParams()
+  const tabFromUrl = searchParams.get('tab') || 'users'
+  const activeTab = ADMIN_TABS.includes(tabFromUrl) ? tabFromUrl : 'users'
   const [users, setUsers] = useState([])
   const [searchQuery, setSearchQuery] = useState('')
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
@@ -54,12 +73,60 @@ export const Admin = () => {
   const [toasts, setToasts] = useState([])
   const [ticketsPage, setTicketsPage] = useState(1)
   const [isMounted, setIsMounted] = useState(false)
+  const [attendance, setAttendance] = useState([])
+  const [attendanceLoading, setAttendanceLoading] = useState(false)
   const ticketsPerPage = 10
 
   useEffect(() => {
     setIsMounted(true)
     loadUsersList()
+    loadAttendance()
   }, [])
+
+  const loadAttendance = async () => {
+    setAttendanceLoading(true)
+    try {
+      const rows = await attendanceApi.getReport({})
+      const mapped = (rows || []).map((r) => normalizeAttendanceRow(attendanceApi.mapReportRow(r)))
+      setAttendance(mapped)
+    } catch {
+      setAttendance([])
+    } finally {
+      setAttendanceLoading(false)
+    }
+  }
+
+  const formatAttendanceTime = (value) => {
+    if (!value) return '—'
+    try {
+      const d = typeof value === 'string' ? parseISO(value) : new Date(value)
+      if (isNaN(d.getTime())) return '—'
+      return format(d, 'dd.MM.yyyy HH:mm', { locale: ru })
+    } catch {
+      return '—'
+    }
+  }
+
+  const formatDuration = (checkIn, checkOut) => {
+    if (!checkIn || !checkOut) return '—'
+    try {
+      const start = typeof checkIn === 'string' ? parseISO(checkIn) : new Date(checkIn)
+      const end = typeof checkOut === 'string' ? parseISO(checkOut) : new Date(checkOut)
+      if (isNaN(start.getTime()) || isNaN(end.getTime()) || end < start) return '—'
+      const totalMin = differenceInMinutes(end, start)
+      const h = Math.floor(totalMin / 60)
+      const m = totalMin % 60
+      if (h > 0 && m > 0) return `${h} ч ${m} мин`
+      if (h > 0) return `${h} ч`
+      return `${m} мин`
+    } catch {
+      return '—'
+    }
+  }
+
+  const getAttendanceDisplayName = (row) => {
+    return row.full_name || row.fullName || row.username || `ID ${row.user_id || row.userId || '—'}`
+  }
 
   const loadUsersList = async () => {
     const allUsers = await loadUsers()
@@ -77,7 +144,7 @@ export const Admin = () => {
   const handleBlockToggle = async (userId) => {
     try {
       const updatedUser = await toggleUserBlock(userId)
-      await loadUsersList() // Reload users list
+      await loadUsersList()
       showToast(
         'Успешно',
         `Пользователь ${updatedUser.blocked ? 'заблокирован' : 'разблокирован'}`,
@@ -99,14 +166,14 @@ export const Admin = () => {
 
   const handleDeleteConfirm = async () => {
     if (!userToDelete) return
-    
+
     if (userToDelete.id === user.id) {
       showToast('Ошибка', 'Вы не можете удалить свой собственный аккаунт', 'destructive')
       setDeleteDialogOpen(false)
       setUserToDelete(null)
       return
     }
-    
+
     try {
       await deleteUser(userToDelete.id)
       await loadUsersList() // Reload users list
@@ -159,9 +226,8 @@ export const Admin = () => {
 
   return (
     <div className="space-y-6 md:space-y-8 px-4 md:px-6 lg:px-8 max-w-7xl mx-auto pt-16 lg:pt-4 sm:pt-6">
-      <div className={`pl-12 lg:pl-0 transition-all duration-700 ${
-        isMounted ? 'opacity-100 translate-y-0' : 'opacity-0 -translate-y-4'
-      }`}>
+      <div className={`pl-12 lg:pl-0 transition-all duration-700 ${isMounted ? 'opacity-100 translate-y-0' : 'opacity-0 -translate-y-4'
+        }`}>
         <h1 className="text-2xl sm:text-3xl lg:text-4xl font-bold">Админ-панель</h1>
         <p className="text-muted-foreground mt-2 text-sm sm:text-base">
           Управление системой, пользователями и тикетами
@@ -170,9 +236,8 @@ export const Admin = () => {
 
       {/* Stats Cards */}
       <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-4">
-        <Card className={`hover:shadow-lg transition-all duration-500 ${
-          isMounted ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4'
-        }`} style={{ transitionDelay: '100ms' }}>
+        <Card className={`hover:shadow-lg transition-all duration-500 ${isMounted ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4'
+          }`} style={{ transitionDelay: '100ms' }}>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Всего пользователей</CardTitle>
             <Users className="h-4 w-4 text-muted-foreground" />
@@ -185,9 +250,8 @@ export const Admin = () => {
           </CardContent>
         </Card>
 
-        <Card className={`hover:shadow-lg transition-all duration-500 ${
-          isMounted ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4'
-        }`} style={{ transitionDelay: '200ms' }}>
+        <Card className={`hover:shadow-lg transition-all duration-500 ${isMounted ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4'
+          }`} style={{ transitionDelay: '200ms' }}>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Всего тикетов</CardTitle>
             <Ticket className="h-4 w-4 text-muted-foreground" />
@@ -200,9 +264,8 @@ export const Admin = () => {
           </CardContent>
         </Card>
 
-        <Card className={`hover:shadow-lg transition-all duration-500 ${
-          isMounted ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4'
-        }`} style={{ transitionDelay: '300ms' }}>
+        <Card className={`hover:shadow-lg transition-all duration-500 ${isMounted ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4'
+          }`} style={{ transitionDelay: '300ms' }}>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Заблокировано</CardTitle>
             <Ban className="h-4 w-4 text-destructive" />
@@ -215,9 +278,8 @@ export const Admin = () => {
           </CardContent>
         </Card>
 
-        <Card className={`hover:shadow-lg transition-all duration-500 ${
-          isMounted ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4'
-        }`} style={{ transitionDelay: '400ms' }}>
+        <Card className={`hover:shadow-lg transition-all duration-500 ${isMounted ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4'
+          }`} style={{ transitionDelay: '400ms' }}>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">IT специалистов</CardTitle>
             <UserCheck className="h-4 w-4 text-muted-foreground" />
@@ -231,12 +293,17 @@ export const Admin = () => {
         </Card>
       </div>
 
-      <Tabs defaultValue="users" className={`w-full transition-all duration-700 ${
-        isMounted ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4'
-      }`} style={{ transitionDelay: '500ms' }}>
-        <TabsList>
+      <Tabs
+        value={activeTab}
+        onValueChange={(v) => setSearchParams({ tab: v })}
+        className={`w-full transition-all duration-700 ${isMounted ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4'
+          }`}
+        style={{ transitionDelay: '500ms' }}
+      >
+        <TabsList className="w-full sm:w-auto flex flex-wrap gap-1">
           <TabsTrigger value="users">Пользователи</TabsTrigger>
           <TabsTrigger value="tickets">Все тикеты</TabsTrigger>
+          <TabsTrigger value="attendance">Посещаемость</TabsTrigger>
         </TabsList>
 
         <TabsContent value="users" className="space-y-4">
@@ -261,9 +328,8 @@ export const Admin = () => {
               </div>
 
               {filteredUsers.length === 0 ? (
-                <p className={`text-muted-foreground text-center py-8 transition-all duration-700 ${
-                  isMounted ? 'opacity-100 scale-100' : 'opacity-0 scale-95'
-                }`} style={{ transitionDelay: '600ms' }}>
+                <p className={`text-muted-foreground text-center py-8 transition-all duration-700 ${isMounted ? 'opacity-100 scale-100' : 'opacity-0 scale-95'
+                  }`} style={{ transitionDelay: '600ms' }}>
                   Пользователи не найдены
                 </p>
               ) : (
@@ -299,8 +365,8 @@ export const Admin = () => {
                                   {u.role === 'admin'
                                     ? 'Администратор'
                                     : u.role === 'it'
-                                    ? 'IT Отдел'
-                                    : 'Пользователь'}
+                                      ? 'IT Отдел'
+                                      : 'Пользователь'}
                                 </span>
                               ) : (
                                 <Select
@@ -385,9 +451,8 @@ export const Admin = () => {
             </CardHeader>
             <CardContent>
               {tickets.length === 0 ? (
-                <p className={`text-muted-foreground text-center py-8 transition-all duration-700 ${
-                  isMounted ? 'opacity-100 scale-100' : 'opacity-0 scale-95'
-                }`} style={{ transitionDelay: '600ms' }}>
+                <p className={`text-muted-foreground text-center py-8 transition-all duration-700 ${isMounted ? 'opacity-100 scale-100' : 'opacity-0 scale-95'
+                  }`} style={{ transitionDelay: '600ms' }}>
                   Тикетов пока нет
                 </p>
               ) : (
@@ -397,9 +462,8 @@ export const Admin = () => {
                       <Link
                         key={ticket.id}
                         to={`/ticket/${ticket.id}`}
-                        className={`block transition-all duration-500 ${
-                          isMounted ? 'opacity-100 translate-x-0' : 'opacity-0 -translate-x-4'
-                        }`}
+                        className={`block transition-all duration-500 ${isMounted ? 'opacity-100 translate-x-0' : 'opacity-0 -translate-x-4'
+                          }`}
                         style={{ transitionDelay: `${600 + index * 50}ms` }}
                       >
                         <div className="p-4 border rounded-lg hover:bg-accent transition-colors hover:shadow-md">
@@ -445,6 +509,68 @@ export const Admin = () => {
             </CardContent>
           </Card>
         </TabsContent>
+
+        <TabsContent value="attendance" className="space-y-4">
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Clock className="h-5 w-5" />
+                Посещаемость
+              </CardTitle>
+              <CardDescription>
+                Время прихода и ухода сотрудников, отработанные часы
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              {attendanceLoading ? (
+                <p className="text-muted-foreground text-center py-8">Загрузка...</p>
+              ) : attendance.length === 0 ? (
+                <p className="text-muted-foreground text-center py-8">
+                  Нет данных о посещаемости. Убедитесь, что на бэкенде доступен эндпоинт /attendance.
+                </p>
+              ) : (
+                <div className="overflow-x-auto rounded-lg border">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="border-b bg-muted/50">
+                        <th className="text-left p-3 font-medium">ФИО сотрудника</th>
+                        <th className="text-left p-3 font-medium">Пришёл</th>
+                        <th className="text-left p-3 font-medium">Ушёл</th>
+                        <th className="text-left p-3 font-medium">Проработал</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {attendance.map((row, index) => (
+                        <tr
+                          key={row.id ?? row.user_id ?? index}
+                          className={cn(
+                            'border-b last:border-0 transition-colors hover:bg-muted/30',
+                            isMounted ? 'opacity-100' : 'opacity-0'
+                          )}
+                        >
+                          <td className="p-3 font-medium">{getAttendanceDisplayName(row)}</td>
+                          <td className="p-3 text-muted-foreground">{formatAttendanceTime(row.check_in)}</td>
+                          <td className="p-3 text-muted-foreground">{formatAttendanceTime(row.check_out)}</td>
+                          <td className="p-3">{formatDuration(row.check_in, row.check_out)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+              {!attendanceLoading && attendance.length > 0 && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="mt-4"
+                  onClick={loadAttendance}
+                >
+                  Обновить
+                </Button>
+              )}
+            </CardContent>
+          </Card>
+        </TabsContent>
       </Tabs>
 
       <Dialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
@@ -470,7 +596,6 @@ export const Admin = () => {
           </DialogFooter>
         </DialogContent>
       </Dialog>
-
       <ToastContainer toasts={toasts} setToasts={setToasts} />
     </div>
   )

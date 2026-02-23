@@ -1,6 +1,6 @@
 import { createContext, useContext, useState, useEffect, useCallback, useMemo } from 'react'
 import { useAuth } from './AuthContext'
-import { api } from '../config/api'
+import { api, getAuthToken } from '../config/api'
 import { wsService } from '../services/websocket'
 
 const TicketsContext = createContext(null)
@@ -80,7 +80,7 @@ export const TicketsProvider = ({ children }) => {
       return () => {}
     }
 
-    const token = localStorage.getItem('auth_token')
+    const token = getAuthToken()
     if (!token) {
       return () => {}
     }

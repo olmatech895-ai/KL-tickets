@@ -1,3 +1,5 @@
+import { API_BASE_URL } from '../config/api.js'
+
 class WebSocketService {
   constructor() {
     this.ws = null
@@ -43,7 +45,7 @@ class WebSocketService {
     this.isConnecting = true
 
     try {
-      const apiUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000/api/v1'
+      const apiUrl = API_BASE_URL || 'https://testdomen.uz/api/v1'
       const isHttps = apiUrl.startsWith('https://')
       const wsProtocol = isHttps ? 'wss:' : 'ws:'
       let wsHost = apiUrl.replace(/^https?:\/\//, '').replace(/\/api\/v1$/, '').replace(/\/$/, '')
@@ -66,9 +68,9 @@ class WebSocketService {
       this.ws.onopen = () => {
         this.isConnecting = false
         this.reconnectAttempts = 0
-        
+
         this.startPingInterval()
-        
+
         this.emit('connected', {})
       }
 
@@ -82,20 +84,20 @@ class WebSocketService {
 
       this.ws.onerror = (error) => {
         this.lastConnectionError = error
-        
+
         if (this.suppressErrors) {
           return
         }
-        
+
         const errorDetails = {
           error,
           url: wsUrl,
           readyState: this.ws?.readyState,
           timestamp: new Date().toISOString()
         }
-        
+
         let errorMessage = 'WebSocket connection error'
-        
+
         if (this.ws?.readyState === WebSocket.CLOSED || this.ws?.readyState === WebSocket.CLOSING) {
           const closeCode = this.ws?.closeCode || 'unknown'
           errorMessage = `WebSocket connection failed. Close code: ${closeCode}`
@@ -104,7 +106,7 @@ class WebSocketService {
         } else {
           errorMessage = 'WebSocket connection failed. Possible causes: server not running, wrong URL, or network issues.'
         }
-        
+
         errorDetails.message = errorMessage
         this.emit('error', errorDetails)
       }
@@ -112,7 +114,7 @@ class WebSocketService {
       this.ws.onclose = (event) => {
         this.isConnecting = false
         this.stopPingInterval()
-        
+
         const closeDetails = {
           code: event.code,
           reason: event.reason || 'No reason provided',
@@ -120,9 +122,9 @@ class WebSocketService {
           url: wsUrl,
           timestamp: new Date().toISOString()
         }
-        
+
         let closeMessage = `WebSocket closed. Code: ${event.code}`
-        
+
         switch (event.code) {
           case 1000:
             closeMessage = 'WebSocket closed normally'
@@ -162,33 +164,33 @@ class WebSocketService {
               closeMessage = `WebSocket application error: ${event.code}`
             }
         }
-        
+
         closeDetails.message = closeMessage
-        
+
         if (event.code === 1006 && this.reconnectAttempts >= this.maxReconnectAttempts) {
           this.suppressErrors = true
         }
-        
+
         if (!this.suppressErrors) {
           this.emit('disconnected', closeDetails)
         }
-        
+
         if (event.code === 1000 || event.code === 1008) {
           this.suppressErrors = false
           this.reconnectAttempts = 0
           return
         }
-        
+
         if (event.code !== 1000 && event.code !== 1008 && this.token && this.reconnectAttempts < this.maxReconnectAttempts) {
           this.reconnectAttempts++
           const delay = Math.min(this.reconnectDelay * Math.pow(2, this.reconnectAttempts - 1), 30000)
-          
+
           const reconnectTimeout = setTimeout(() => {
             if (this.token && !this.isConnecting && this.ws?.readyState !== WebSocket.OPEN) {
               this.connect(this.token)
             }
           }, delay)
-          
+
           this.reconnectTimeout = reconnectTimeout
         } else if (this.reconnectAttempts >= this.maxReconnectAttempts) {
           this.suppressErrors = true
@@ -197,7 +199,7 @@ class WebSocketService {
     } catch (error) {
       this.isConnecting = false
       this.lastConnectionError = error
-      
+
       if (!this.suppressErrors) {
         this.emit('error', { error })
       }
@@ -301,12 +303,12 @@ class WebSocketService {
 
   disconnect() {
     this.stopPingInterval()
-    
+
     if (this.reconnectTimeout) {
       clearTimeout(this.reconnectTimeout)
       this.reconnectTimeout = null
     }
-    
+
     if (this.ws) {
       const state = this.ws.readyState
       if (state === WebSocket.CONNECTING || state === WebSocket.OPEN) {

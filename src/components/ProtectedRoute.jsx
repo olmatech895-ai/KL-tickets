@@ -16,12 +16,10 @@ export const ProtectedRoute = ({ children, requiredRole, allowedRoles }) => {
     return <Navigate to="/login" replace />
   }
 
-  // Проверка для allowedRoles (массив ролей)
   if (allowedRoles && !allowedRoles.includes(user.role)) {
     return <Navigate to="/" replace />
   }
 
-  // Проверка для requiredRole (одна роль)
   if (requiredRole && user.role !== requiredRole) {
     return <Navigate to="/" replace />
   }
